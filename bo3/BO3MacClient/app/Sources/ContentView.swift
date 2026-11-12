@@ -50,12 +50,27 @@ struct ContentView: View {
             serverTable
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-        .alert("Password required", isPresented: passwordPrompt, presenting: passwordServer) { server in
-            SecureField("Password", text: $password)
-            Button("Join") { join(server, password: password) }.keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {}
-        } message: { server in
-            Text("\(server.plainName) is password protected. Enter its password to join.")
+        // A sheet, not an alert: the view already has an alert, and macOS
+        // SwiftUI shows only one alert per view.
+        .sheet(item: $passwordServer) { server in
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Password required", systemImage: "lock.fill").font(.headline)
+                Text("\(server.plainName) is password protected. Enter its password to join.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                SecureField("Password", text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { submitPassword(server) }
+                HStack {
+                    Spacer()
+                    Button("Cancel", role: .cancel) { passwordServer = nil }.keyboardShortcut(.cancelAction)
+                    Button("Join") { submitPassword(server) }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(password.isEmpty)
+                }
+            }
+            .padding(20)
+            .frame(width: 360)
         }
         .navigationTitle("T7 Server Browser")
         .navigationSubtitle(browser.servers.isEmpty ? "Community servers" : "\(visible.count) servers · \(totalPlayers) players online")
@@ -245,8 +260,10 @@ struct ContentView: View {
         launcher.join(server, name: playerName, password: password ?? "")
     }
 
-    private var passwordPrompt: Binding<Bool> {
-        Binding(get: { passwordServer != nil }, set: { if !$0 { passwordServer = nil } })
+    private func submitPassword(_ server: Server) {
+        guard !password.isEmpty else { return }
+        passwordServer = nil
+        join(server, password: password)
     }
 
     private func pingColor(_ ping: Int) -> Color {
