@@ -187,10 +187,13 @@ common_cvars() {
 }
 if [ "$t" = t5 ]; then
   players="$plutonium/storage/t5/players"
-  # DXVK compiles every pipeline in its state cache while the game starts, so
-  # fold in the lists an older setup gathered (all maps): nothing is then
-  # compiled for the first time mid-game (first shot, first zombie, ...).
+  # DXVK compiles every pipeline in its state cache while a map loads, so fold
+  # in the list that ships with Black Ops Mac (about 19,000 pipelines gathered
+  # on every zombies map: which shader combinations the game uses, nothing
+  # hardware-specific) and any an older setup left: then nothing is compiled
+  # for the first time mid-game (first shot, first explosion, a new area).
   on BO1_SHADER_CACHE && /usr/bin/python3 -I "$kit/tools/statecache-merge.py" "$home/cache/plutonium-bootstrapper-win32.dxvk-cache" \
+    "$kit/payload/bo1/pipelines.dxvk-cache" \
     "$dir/plutonium-bootstrapper-win32.dxvk-cache" "$dir"/*/cache/plutonium-bootstrapper-win32.dxvk-cache 2>/dev/null || true
   mkdir -p "$players"
   for c in config.cfg config_mp.cfg; do

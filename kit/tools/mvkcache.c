@@ -29,6 +29,7 @@
  */
 #include <dlfcn.h>
 #include <pthread.h>
+#include <pthread/qos.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -228,15 +229,18 @@ static void save_all_locked(void)
 static void *saver(void *arg)
 {
     (void)arg;
+    /* Saving serializes and writes megabytes of cache: keep it on the
+       efficiency cores at background priority, away from the game. */
+    pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND, 0);
     for (;;) {
         sleep(2);
         uint64_t c = created;
-        /* Save once creation has paused for 4 s, so saving does not get in
-           the way while the game is busy compiling; and at least every 60 s
+        /* Save once creation has paused for 10 s, so saving does not get in
+           the way while the game is busy compiling; and at least every 120 s
            while it keeps compiling, so a game that is killed (Wine's
            processes usually are) does not lose what it compiled. */
         if (c == saved_count) continue;
-        if (now_ns() - last_create_ns < 4000000000ull && now_ns() - last_save_ns < 60000000000ull) continue;
+        if (now_ns() - last_create_ns < 10000000000ull && now_ns() - last_save_ns < 120000000000ull) continue;
         LOG("%llu pipelines so far, %.2f ms each on average",
             (unsigned long long)c, c ? create_ns / 1e6 / c : 0.0);
         pthread_mutex_lock(&lock);
