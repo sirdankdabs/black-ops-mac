@@ -57,11 +57,15 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 
 ## Use it
 
-1. Download `Black Ops Mac.app` from the [latest release](https://github.com/sirdankdabs/bo-mac/releases/latest) (or build it: `./build-app.sh`, needs the Xcode command line tools). The first time, right-click it → **Open** (it is not notarized).
-2. Open it, pick a game:
-   - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. Then **Play Online** (Plutonium launcher), **Zombies**, **Campaign** or **Multiplayer** (offline/LAN).
-   - **Black Ops III**: when Steam has the game, *Install* → the server browser opens.
-3. The first time you visit a Black Ops map, its loading screen stays up while every shader is compiled (up to about a minute). After that, it loads straight away.
+1. Download `Black Ops Mac.app` from the [latest release](https://github.com/sirdankdabs/bo-mac/releases/latest) (or build it: `./build-app.sh`, requires the Xcode command line tools). The first time, right-click it → **Open** (it is not notarized).
+
+2. **Prepare your game folder:** Make sure your game files are in a single folder containing `plutonium.exe`. This is the folder you must select during installation when prompted to choose the game directory.
+
+3. Open the app and pick a game:
+   - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
+   - **Black Ops III**: Once the game is installed through Steam, click *Install* → the server browser will open. From there, select any server you want to join, and the game will launch automatically. Once the game opens, navigate to the corresponding game mode (e.g., Zombies), and you'll automatically join the selected server. Alternatively, you can launch the game directly through Steam to join Steam servers or open the server browser separately to connect to community servers.
+
+4. The first time you load a Black Ops map, the loading screen will remain visible while all shaders are compiled (up to about a minute). Subsequent loads will be much faster.
 
 ## The engine
 
