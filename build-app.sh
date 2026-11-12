@@ -42,5 +42,6 @@ cat > "$app/Contents/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+xattr -cr "$app"   # Finder info and other extended attributes stop codesign
 codesign -fs - --deep "$app" 2>/dev/null
 echo "==> Built $app ($(du -sh "$app" | cut -f1))"

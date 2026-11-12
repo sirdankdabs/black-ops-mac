@@ -50,7 +50,6 @@ struct Server: Identifiable, Hashable {
         if !protocolOK { return "Incompatible server" }
         if needsMod { return "Needs a Workshop mod (not supported yet)" }
         if isCustomMap && !canDownloadMap { return "Custom map not available on the Workshop" }
-        if isPrivate { return "Password protected" }
         if isFull { return "Server is full" }
         return nil
     }

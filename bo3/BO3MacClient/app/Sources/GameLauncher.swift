@@ -124,9 +124,10 @@ final class GameLauncher: ObservableObject {
         return !trimmed.isEmpty && trimmed.count <= 16 && trimmed.rangeOfCharacter(from: CharacterSet(charactersIn: "\\\";%")) == nil
     }
 
-    func join(_ server: Server, name: String) {
+    func join(_ server: Server, name: String, password: String = "") {
         guard gameAppURL != nil else { alert = "Black Ops III wasn't found. Choose its location in Settings."; return }
-        let request = "server=\(server.address)\nmode=\(server.mode.rawValue)\nname=\(name.trimmingCharacters(in: .whitespaces))\n"
+        var request = "server=\(server.address)\nmode=\(server.mode.rawValue)\nname=\(name.trimmingCharacters(in: .whitespaces))\n"
+        if !password.isEmpty { request += "password=\(password)\n" }
         do {
             try request.write(to: Self.dataDirectory.appendingPathComponent("join.request"), atomically: true, encoding: .utf8)
         } catch {

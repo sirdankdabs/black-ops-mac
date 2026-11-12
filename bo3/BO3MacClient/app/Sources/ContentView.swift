@@ -15,6 +15,8 @@ struct ContentView: View {
     @AppStorage("hideEmpty") private var hideEmpty = false
     @AppStorage("hideUnjoinable") private var hideUnjoinable = false
     @State private var search = ""
+    @State private var passwordServer: Server?   // a locked server waiting for its password
+    @State private var password = ""
     @State private var selection: Server.ID?
     @State private var sortOrder = [KeyPathComparator(\Server.humans, order: .reverse)]
 
@@ -48,7 +50,14 @@ struct ContentView: View {
             serverTable
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-        .navigationTitle("BO3 Mac Client")
+        .alert("Password required", isPresented: passwordPrompt, presenting: passwordServer) { server in
+            SecureField("Password", text: $password)
+            Button("Join") { join(server, password: password) }.keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: { server in
+            Text("\(server.plainName) is password protected. Enter its password to join.")
+        }
+        .navigationTitle("T7 Server Browser")
         .navigationSubtitle(browser.servers.isEmpty ? "Community servers" : "\(visible.count) servers · \(totalPlayers) players online")
         .searchable(text: $search, placement: .toolbar, prompt: "Search servers, maps, modes")
         .toolbar {
@@ -63,7 +72,7 @@ struct ContentView: View {
                 Menu {
                     Toggle("Hide full servers", isOn: $hideFull)
                     Toggle("Hide empty servers", isOn: $hideEmpty)
-                    Toggle("Hide servers that need mods or a password", isOn: $hideUnjoinable)
+                    Toggle("Hide servers that need mods", isOn: $hideUnjoinable)
                 } label: {
                     Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }
@@ -85,7 +94,7 @@ struct ContentView: View {
         .onChange(of: launcher.gameAppURL) { _, url in
             browser.zoneDirectory = url?.appendingPathComponent("Contents/Assets/zone", isDirectory: true)
         }
-        .alert("BO3 Mac Client", isPresented: Binding(get: { launcher.alert != nil }, set: { if !$0 { launcher.alert = nil } })) {
+        .alert("T7 Server Browser", isPresented: Binding(get: { launcher.alert != nil }, set: { if !$0 { launcher.alert = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(launcher.alert ?? "")
@@ -221,13 +230,23 @@ struct ContentView: View {
         .overlay(alignment: .top) { Divider() }
     }
 
-    private func join(_ server: Server) {
+    private func join(_ server: Server, password: String? = nil) {
         if let blocker = server.blocker { launcher.alert = blocker; return }
         if !playerName.isEmpty && !GameLauncher.validName(playerName) {
             launcher.alert = "Player names can have 1–16 characters, without \\ \" ; or %."
             return
         }
-        launcher.join(server, name: playerName)
+        // password-protected: ask for it first
+        if server.isPrivate && password == nil {
+            self.password = ""
+            passwordServer = server
+            return
+        }
+        launcher.join(server, name: playerName, password: password ?? "")
+    }
+
+    private var passwordPrompt: Binding<Bool> {
+        Binding(get: { passwordServer != nil }, set: { if !$0 { passwordServer = nil } })
     }
 
     private func pingColor(_ ping: Int) -> Color {

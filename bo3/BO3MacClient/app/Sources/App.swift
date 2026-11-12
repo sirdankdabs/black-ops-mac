@@ -6,7 +6,7 @@ struct BO3MacClientApp: App {
     @StateObject private var launcher = GameLauncher()
 
     var body: some Scene {
-        Window("BO3 Mac Client", id: "main") {
+        Window("T7 Server Browser", id: "main") {
             ContentView()
                 .environmentObject(browser)
                 .environmentObject(launcher)
@@ -71,7 +71,7 @@ struct SettingsView: View {
             }
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("BO3 Mac Client").font(.headline)
+                    Text("T7 Server Browser").font(.headline)
                     Text("Play Call of Duty: Black Ops III for Mac on community dedicated servers. Requires the Steam version of the game.")
                         .foregroundStyle(.secondary)
                     Text("Built on BO3MacFix by Emma / InvoxiPlayGames and Anthony / serious, with T7Patch work by the T7Patch authors. Not affiliated with Activision, Treyarch, Aspyr or Valve.")

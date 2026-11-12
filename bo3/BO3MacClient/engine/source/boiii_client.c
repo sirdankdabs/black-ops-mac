@@ -199,7 +199,12 @@ static void put_string(uint8_t *buffer, size_t *length, const void *data, uint32
     put(buffer, length, &size, 4); put(buffer, length, data, size);
 }
 
-// Rebuilds 'connect "<info>"' with xuid replaced by the key-derived xuid.
+// Password of the server being joined (from the launcher's join request);
+// sent as the userinfo "password" key, which password-protected servers check.
+static char join_password[64];
+
+// Rebuilds 'connect "<info>"' with xuid replaced by the key-derived xuid, and
+// the join password when there is one.
 static bool rewrite_connect(const char *data, int length, char *out, size_t capacity) {
     if (length < 10 || length > 1500 || memcmp(data, "connect \"", 9)) return false;
     char info[1600];
@@ -224,6 +229,8 @@ static bool rewrite_connect(const char *data, int length, char *out, size_t capa
         } else if (!strcmp(name, "xuid")) {
             used += (size_t)snprintf(out + used, capacity - used, "\\xuid\\%llx", (unsigned long long)key_xuid);
             wrote_xuid = true;
+        } else if (!strcmp(name, "password")) {
+            // replaced by the join password below
         } else {
             used += (size_t)snprintf(out + used, capacity - used, "\\%s\\%s", name, value);
         }
@@ -231,6 +238,7 @@ static bool rewrite_connect(const char *data, int length, char *out, size_t capa
         cursor = next;
     }
     if (!wrote_xuid) used += (size_t)snprintf(out + used, capacity - used, "\\xuid\\%llx", (unsigned long long)key_xuid);
+    if (join_password[0]) used += (size_t)snprintf(out + used, capacity - used, "\\password\\%s", join_password);
     used += (size_t)snprintf(out + used, capacity - used, "\"");
     return used < capacity;
 }
@@ -1172,17 +1180,20 @@ static void poll_join_request(void) {
     bo3_data_path("join.request", path, sizeof(path));
     FILE *file = fopen(path, "r");
     if (!file) return;
-    char line[256], server[128] = "", mode[8] = "zm", name[64] = "";
+    char line[256], server[128] = "", mode[8] = "zm", name[64] = "", password[64] = "";
     while (fgets(line, sizeof(line), file)) {
         line[strcspn(line, "\r\n")] = 0;
         if (!strncmp(line, "server=", 7)) snprintf(server, sizeof(server), "%s", line + 7);
         else if (!strncmp(line, "mode=", 5)) snprintf(mode, sizeof(mode), "%s", line + 5);
         else if (!strncmp(line, "name=", 5)) snprintf(name, sizeof(name), "%s", line + 5);
+        else if (!strncmp(line, "password=", 9)) snprintf(password, sizeof(password), "%s", line + 9);
     }
     fclose(file);
     unlink(path);
     if (!server[0]) return;
     if (name[0] && strlen(name) <= 16 && !strpbrk(name, "\\\";%")) setenv("BO3MACFIX_PLAYERNAME", name, 1);
+    // each join request carries its own password (or none)
+    snprintf(join_password, sizeof(join_password), "%s", strpbrk(password, "\\\"") ? "" : password);
     snprintf(join.server, sizeof(join.server), "%s", server);
     snprintf(join.mode, sizeof(join.mode), "%s", mode);
     join.pending = true;
