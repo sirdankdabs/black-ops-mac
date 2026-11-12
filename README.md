@@ -4,7 +4,7 @@
 
 Choose your game folder, press Install, press Play. No CrossOver, no Wine to install, no `.command` files, no Terminal.
 
-[**Download the app**](https://github.com/sirdankdabs/black-ops-mac/releases/latest) · [What it does](#what-it-does) · [Requirements](#requirements) · [Credits](#credits)
+[**Download the app**](https://github.com/sirdankdabs/t7-mac/releases/latest) · [What it does](#what-it-does) · [Requirements](#requirements) · [Credits](#credits)
 
 ## What it does
 
@@ -57,7 +57,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 
 ## Use it
 
-1. Download `Black Ops Mac.app` from the [latest release](https://github.com/sirdankdabs/black-ops-mac/releases/latest) (or build it: `./build-app.sh`, needs the Xcode command line tools). The first time, right-click it → **Open** (it is not notarized).
+1. Download `Black Ops Mac.app` from the [latest release](https://github.com/sirdankdabs/t7-mac/releases/latest) (or build it: `./build-app.sh`, needs the Xcode command line tools). The first time, right-click it → **Open** (it is not notarized).
 2. Open it, pick a game:
    - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. Then **Play Online** (Plutonium launcher), **Zombies**, **Campaign** or **Multiplayer** (offline/LAN).
    - **Black Ops III**: when Steam has the game, *Install* → the server browser opens.
