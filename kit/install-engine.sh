@@ -3,8 +3,11 @@
 #
 #   install-engine.sh [--update-x87]
 #
-# The base is the Wine runtime of CodeWeavers' CrossOver 26.3: from an installed
-# CrossOver.app, or else from CodeWeavers' own download of it (no install needed). Over it go:
+# The base is our own Wine engine, built entirely from open source
+# (engine/build-engine.sh: CodeWeavers' published CrossOver 26.3 source with
+# our patches, Sikarugir's template libraries, Wine Mono), downloaded from the
+# repository's releases. If it cannot be downloaded, CrossOver 26.3's runtime is
+# used instead (installed, or CodeWeavers' download). Over it go:
 #  - our ntdll.so (patches/wine-ntdll.patch): emulated execution breakpoints
 #    under Rosetta (what Plutonium needs to start), execute-on-demand when a
 #    program turns DEP off, and the x87sidecar handshake;
@@ -29,6 +32,9 @@ cx_zip_sha256=8688e0848c4e5f79f1cc351cb52d32447da00c6c00cfd3b4bb2d164d44589a26
 engine="$home/engine"
 downloads="$home/downloads"
 cx_version_wanted=26.3
+engine_version=0.2.0
+engine_url="https://github.com/sirdankdabs/black-ops-mac/releases/download/engine-$engine_version/black-ops-mac-engine-$engine_version.tar.xz"
+engine_sha=ef7e8d28d04ddcba60d7f1ebc3c1121ac158da7ea97ca677ddab1d9b93993744
 moltenvk_url=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
 moltenvk_sha=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
 x87_fallback_tag=v1.9.1
@@ -86,7 +92,28 @@ step "Checking this Mac"
 /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null ||
   die "Rosetta 2 is missing. Install it with: softwareupdate --install-rosetta --agree-to-license"
 mkdir -p "$home" "$downloads"
+new="$engine.new"
+rm -rf "$new"
 
+# --- Base: our engine ------------------------------------------------------------
+own=
+archive=${BOM_ENGINE_ARCHIVE:-"$downloads/black-ops-mac-engine-$engine_version.tar.xz"}
+if [ ! -f "$archive" ] || [ "$(sha "$archive")" != "$engine_sha" ]; then
+  step "Downloading the Black Ops Mac engine $engine_version (320 MB)"
+  if curl -fL --retry 3 -o "$archive.part" "$engine_url" 2>/dev/null; then mv -f "$archive.part" "$archive"; else rm -f "$archive.part"; fi
+fi
+if [ -f "$archive" ] && [ "$(sha "$archive")" = "$engine_sha" ]; then
+  step "Unpacking the engine"
+  tmp=$(mktemp -d)
+  tar -xJf "$archive" -C "$tmp" || die "cannot unpack the engine"
+  mv "$tmp/engine" "$new"; rm -rf "$tmp"
+  own=1
+  base="own $engine_version"
+else
+  step "The engine download is not available; using CrossOver 26.3's runtime instead"
+fi
+
+if [ -z "$own" ]; then
 # CrossOver's runtime: from an installed CrossOver 26.3 when there is one,
 # otherwise from CodeWeavers' own download of it (checked against its
 # SHA-256). Only the Wine runtime inside is used; CrossOver itself is never
@@ -116,25 +143,25 @@ if ! cx_ok "$cx_app"; then
   fi
 fi
 cx_version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$cx_app/Contents/Info.plist" 2>/dev/null || echo "?")
-new="$engine.new"
-rm -rf "$new"
-
-# --- Base runtime --------------------------------------------------------------
 step "Copying CrossOver $cx_version's runtime"
 cp -cR "$cx_app/Contents/SharedSupport/CrossOver" "$new" 2>/dev/null || cp -R "$cx_app/Contents/SharedSupport/CrossOver" "$new"
+base="CrossOver $cx_version"
+fi
 L="$new/lib/wine"
 
 # --- Our modules ---------------------------------------------------------------
 step "Installing the Black Ops Mac modules"
-cp "$kit/payload/x86_64-unix/ntdll.so" "$L/x86_64-unix/ntdll.so"
-codesign -fs - "$L/x86_64-unix/ntdll.so" 2>/dev/null
+if [ -z "$own" ]; then   # our engine has it built in
+  cp "$kit/payload/x86_64-unix/ntdll.so" "$L/x86_64-unix/ntdll.so"
+  codesign -fs - "$L/x86_64-unix/ntdll.so" 2>/dev/null
+fi
 cp "$kit/payload/i386-windows/d3d9.dll" "$L/i386-windows/d3d9.dll"
 # xinput: ours and CrossOver's side by side, launch.sh picks one (RUMBLE_FIX)
-cp "$L/i386-windows/xinput1_3.dll" "$L/i386-windows/xinput1_3.cx.dll"
+cp "$kit/payload/orig/xinput1_3.dll" "$L/i386-windows/xinput1_3.cx.dll"
 cp "$kit/payload/i386-windows/xinput1_3.dll" "$L/i386-windows/xinput1_3.bom.dll"
 cp "$kit/payload/i386-windows/xinput1_3.dll" "$L/i386-windows/xinput1_3.dll"
 # winebus.sys: vibration written without holding back the controller's input
-cp "$L/x86_64-windows/winebus.sys" "$L/x86_64-windows/winebus.cx.sys"
+cp "$kit/payload/orig/winebus.sys" "$L/x86_64-windows/winebus.cx.sys"
 cp "$kit/payload/x86_64-windows/winebus.sys" "$L/x86_64-windows/winebus.bom.sys"
 cp "$kit/payload/x86_64-windows/winebus.sys" "$L/x86_64-windows/winebus.sys"
 for a in i386-windows x86_64-windows; do
@@ -155,6 +182,8 @@ install_name_tool -id @rpath/libMoltenVK.real.dylib "$new/lib64/libMoltenVK.real
 codesign -fs - "$new/lib64/libMoltenVK.real.dylib" 2>/dev/null
 cp "$kit/payload/lib64/libMoltenVK.dylib" "$new/lib64/libMoltenVK.dylib"
 codesign -fs - "$new/lib64/libMoltenVK.dylib" 2>/dev/null
+# our engine's Vulkan (winevulkan) is MoltenVK, through the shader cache
+[ -n "$own" ] && ln -sf libMoltenVK.dylib "$new/lib64/libvulkan.1.dylib"
 
 step "Installing the x87 accelerator"
 x87_install "$new"
@@ -166,7 +195,7 @@ step "Declaring Wine a game (macOS Game Mode)"
 # keep the shader cache of the previous engine
 for c in "$engine"/lib64/mvkcache.bin.*; do [ -f "$c" ] && cp -p "$c" "$new/lib64/"; done
 cat > "$new/black-ops-mac.version" <<EOF
-crossover=$cx_version
+base=$base
 kit=$(cat "$kit/VERSION" 2>/dev/null || echo dev)
 x87sidecar=$(cat "$new/x87sidecar.version")
 EOF

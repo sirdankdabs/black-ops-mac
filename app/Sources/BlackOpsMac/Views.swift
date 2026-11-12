@@ -482,7 +482,7 @@ struct EngineFooter: View {
             Divider()
             if state.engineInstalled {
                 let info = state.engineInfo
-                Text("Engine \(info["kit"] ?? "?") · CrossOver \(info["crossover"] ?? "?")")
+                Text("Engine \(info["kit"] ?? "?") · \(info["base"] ?? info["crossover"].map { "CrossOver \($0)" } ?? "?")")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                 HStack(spacing: 4) {
                     Text("x87 \(info["x87sidecar"] ?? "?")").font(.system(size: 10)).foregroundStyle(.secondary)

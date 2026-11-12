@@ -40,7 +40,7 @@ Highlights:
 ## Requirements
 
 - A Mac with Apple silicon, macOS 14 or later, and Rosetta 2.
-- Nothing else: the engine downloads the Wine runtime of CrossOver 26.3 straight from CodeWeavers (checked against its SHA-256) and adds our patches. CrossOver itself is never installed or opened (an installed CrossOver 26.3 is used if you have one).
+- Nothing else: no CrossOver, no Wine to install. The app downloads our engine, built entirely from open source (see *The engine* below).
 - Your own copies of the games:
   - Black Ops / Black Ops II folders with `plutonium.exe` inside (from [plutonium.pw](https://plutonium.pw)), and a Plutonium account to play online.
   - Black Ops III from Steam (the Mac version).
@@ -52,6 +52,17 @@ Highlights:
    - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. Then **Play Online** (Plutonium launcher), **Zombies**, **Campaign** or **Multiplayer** (offline/LAN).
    - **Black Ops III**: when Steam has the game, *Install* → the server browser opens.
 3. The first time you visit a Black Ops map, its loading screen stays up while every shader is compiled (up to about a minute). After that, it loads straight away.
+
+## The engine
+
+Built entirely from open source by `engine/build-engine.sh`, and published in this repository's releases:
+
+- **Wine** — CodeWeavers' published CrossOver 26.3 source code (LGPL), with our patches (`kit/patches`), compiled for Apple silicon (x86_64 under Rosetta 2, 32- and 64-bit Windows programs).
+- **macOS libraries** Wine loads (FreeType, GnuTLS and its dependencies, SDL2, libinotify) — x86_64 builds from [Sikarugir](https://github.com/Sikarugir-App)'s wrapper template.
+- **Wine Mono** from WineHQ, for Plutonium's installer.
+- Completed at install time with our DXVK, DXMT, MoltenVK (Khronos) and athei's x87sidecar.
+
+No CrossOver installation, licence or trial is involved. (If the engine release cannot be downloaded, the installer falls back to CrossOver 26.3's runtime.)
 
 ## How it is put together
 
@@ -74,7 +85,8 @@ build-app.sh         builds dist/Black Ops Mac.app
 ## Credits
 
 - **Plutonium** team — the Black Ops / Black Ops II clients.
-- **CodeWeavers** — CrossOver and its open-source Wine; **the Wine project**.
+- **CodeWeavers** — CrossOver and its published open-source Wine; **the Wine project**; **WineHQ** — Wine Mono.
+- **Sikarugir** (Gcenx and contributors) — the wrapper template whose x86_64 libraries the engine uses.
 - **Lifeisawful** — [rosettax87](https://github.com/Lifeisawful/rosettax87), the original x87 acceleration for Rosetta; **athei** — [x87sidecar](https://github.com/athei/x87sidecar), the accelerator used here (downloaded from its latest release).
 - **DXVK** by Philip Rebohle and contributors; **Sporif** — the dxvk-async patch; **3Shain** — [DXMT](https://github.com/3Shain/dxmt).
 - **Khronos / MoltenVK** contributors.
