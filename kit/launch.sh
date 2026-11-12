@@ -134,6 +134,19 @@ else reg add "$bootstrapper\\Mac Driver" /v CaptureDisplaysForFullscreen /d n /f
 reg add 'HKCU\Software\Wine\AppDefaults\plutonium-launcher-win32.exe\Direct3D' /v renderer /d gl /f
 "$WINESERVER" -w 2>/dev/null
 
+# --- File pickers ---------------------------------------------------------------
+# Wine's file dialogs (Plutonium's "Browse" for the game folder) open on the
+# Windows desktop: give it shortcuts to the Mac's folders and the game folders,
+# and the home folder as drive H:.
+wdesk="$WINEPREFIX/drive_c/users/crossover/Desktop"
+if [ -d "$wdesk" ] && [ ! -L "$wdesk" ]; then
+  ln -sfn "$HOME" "$wdesk/Mac Home"
+  for d in Downloads Documents; do [ -d "$HOME/$d" ] && ln -sfn "$HOME/$d" "$wdesk/$d"; done
+  [ -d "${BO1_DIR:-}" ] && ln -sfn "$BO1_DIR" "$wdesk/Black Ops" || rm -f "$wdesk/Black Ops"
+  [ -d "${BO2_DIR:-}" ] && ln -sfn "$BO2_DIR" "$wdesk/Black Ops II" || rm -f "$wdesk/Black Ops II"
+fi
+[ -e "$WINEPREFIX/dosdevices/h:" ] || ln -s "$HOME" "$WINEPREFIX/dosdevices/h:"
+
 # --- Plutonium and game settings -----------------------------------------------
 winpath="Z:${dir//\//\\}"
 cfg="$plutonium/config.json"
@@ -150,6 +163,16 @@ fi
 set_cvar() { sed -i '' -E "s/^seta $2 \"[^\"]*\"/seta $2 \"$3\"/" "$1"; }
 set_or_add() { if grep -q "^seta $2 " "$1"; then set_cvar "$@"; else printf 'seta %s "%s"\n' "$2" "$3" >> "$1"; fi; }
 desktop=${dw:+${dw}x$dh}
+# Default settings, applied once per game profile (marker file), so what the
+# player changes in the game afterwards is kept: fullscreen at the display's
+# resolution, sync every frame, automatic texture quality, 16x anisotropy.
+defaults_once() {   # defaults_once <cfg> <marker> name value ...
+  local cfg=$1 marker=$2; shift 2
+  [ -f "$marker" ] && return 0
+  [ -f "$cfg" ] || : > "$cfg"
+  while [ $# -ge 2 ]; do set_or_add "$cfg" "$1" "$2"; shift 2; done
+  : > "$marker"
+}
 common_cvars() {
   on MSAA_FIX && sed -i '' -E 's/^seta r_aaSamples "(8|16|32)"/seta r_aaSamples "4"/' "$1"
   if [ -n "$desktop" ]; then
@@ -173,8 +196,11 @@ if [ "$t" = t5 ]; then
   for c in config.cfg config_mp.cfg; do
     [ -f "$players/$c" ] || printf 'seta %s "%s"\n' com_first_time_pc 0 com_recommendedSet 1 sm_enable 0 \
       r_blur_allowed 0 r_distortion 0 com_maxfps 0 r_fullscreen 1 > "$players/$c"
+    defaults_once "$players/$c" "$players/.bom-defaults-$c" r_fullscreen 1 r_mode "${desktop:-1920x1080}" \
+      r_vsync 1 r_picmip_manual 0 r_texFilterAnisoMax 16 r_aaSamples 4 r_aspectRatio auto \
+      r_dof_enable 1 r_glow_allowed 1 r_shaderWarming 1
     common_cvars "$players/$c"
-    [ -n "${hz:-}" ] && set_cvar "$players/$c" r_displayRefresh "$hz Hz"
+    [ -n "${hz:-}" ] && set_or_add "$players/$c" r_displayRefresh "$hz Hz"
     on BO1_NO_SHADOWS && set_cvar "$players/$c" sm_enable 0   # shadows froze BO1
     # shader warming draws every material once while the map loads; our
     # DXVK compiles them all then, while the loading screen stays up
@@ -205,9 +231,20 @@ else
   players="$plutonium/storage/t6/players"
   mkdir -p "$players"
   # an all-zero hardware profile makes BO2 detect a safe one (Apple GPUs stop at 4x MSAA)
-  on BO2_HW_PROFILE && for m in mp zm; do [ -f "$players/hardware_$m.chp" ] || head -c 4096 /dev/zero > "$players/hardware_$m.chp"; done
+  # BO2 keeps its display settings in a binary hardware profile (the cfg's
+  # r_fullscreen/r_mode are overwritten from it). New profiles start from one
+  # made on an Apple GPU: fullscreen 1920x1080, anti-aliasing Apple GPUs
+  # support. Once per profile; the game re-detects if the hardware differs.
+  if on BO2_HW_PROFILE; then
+    for m in mp zm; do
+      if [ ! -f "$players/.bom-defaults-hardware_$m" ]; then
+        cp "$kit/payload/bo2/hardware.chp" "$players/hardware_$m.chp" && : > "$players/.bom-defaults-hardware_$m"
+      fi
+    done
+  fi
   for c in plutonium_zm.cfg plutonium_mp.cfg; do
-    [ -f "$players/$c" ] || continue
+    defaults_once "$players/$c" "$players/.bom-defaults-$c" r_fullscreen 1 r_mode "${desktop:-1920x1080}" \
+      r_vsync 1 r_monitor 0 r_picmip_manual 0 r_texFilterAnisoMax 16 r_aaSamples 1
     common_cvars "$players/$c"
     set_cvar "$players/$c" com_maxfps 0
   done

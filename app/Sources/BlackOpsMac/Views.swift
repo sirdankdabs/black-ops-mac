@@ -113,8 +113,11 @@ struct GameDetail: View {
         .toolbar {
             if game.usesEngine {
                 ToolbarItem {
-                    Button { showSettings = true } label: { Image(systemName: "slider.horizontal.3") }
-                        .help("Settings")
+                    Button { showSettings = true } label: {
+                        Label("Settings", systemImage: "slider.horizontal.3").labelStyle(.titleAndIcon)
+                    }
+                    .foregroundStyle(.white)
+                    .help("Settings and patches")
                 }
             }
         }
@@ -132,6 +135,7 @@ struct PlutoniumGameView: View {
     @EnvironmentObject var state: AppState
     let game: Game
     @State private var confirmRemove = false
+    @State private var showSettings = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -146,6 +150,7 @@ struct PlutoniumGameView: View {
                     .disabled(state.progress != nil)
             }
         }
+        .sheet(isPresented: $showSettings) { SettingsView(game: game) }
         .confirmationDialog("Remove the \(game.title) setup?", isPresented: $confirmRemove) {
             Button("Remove the \(game.title) setup", role: .destructive) { state.removeSetup(game.rawValue) }
             Button("Remove everything (engine and Plutonium)", role: .destructive) { state.removeSetup("all") }
@@ -175,6 +180,7 @@ struct PlutoniumGameView: View {
                         }
                         .disabled(state.running != nil || state.progress != nil)
                     }
+                    BigButton(title: "Settings", symbol: "slider.horizontal.3") { showSettings = true }
                 }
                 if state.running == game {
                     Button { state.stop() } label: { Label("Stop the game", systemImage: "stop.fill") }
@@ -252,11 +258,8 @@ struct SetupChecklist: View {
             Text("Set up").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
             Check(done: state.rosettaInstalled, title: "Rosetta 2",
                   detail: "Run in Terminal: softwareupdate --install-rosetta --agree-to-license")
-            Check(done: state.crossOverVersion?.hasPrefix("26.3") ?? false, title: "CrossOver 26.3 in Applications",
-                  detail: state.crossOverVersion.map { "Found CrossOver \($0); version 26.3 is needed." }
-                      ?? "Install it from codeweavers.com (the free trial is enough). Black Ops Mac copies its runtime; you never need to open it.")
             Check(done: state.engineInstalled, title: "Black Ops Mac engine",
-                  detail: "Builds the engine from CrossOver's runtime and our patches.") {
+                  detail: "Downloads the Wine runtime of CrossOver 26.3 from CodeWeavers (nothing else to install) and adds our patches. About 400 MB.") {
                 Button("Install") { state.installEngine() }.disabled(state.progress != nil)
             }
             Check(done: state.folder(for: game) != nil, title: "\(game.title) game folder",

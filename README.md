@@ -30,6 +30,8 @@ Highlights:
 - **Black Ops II on DXMT** (D3D11 → Metal) with asynchronous pipeline compilation and frame pacing.
 - **Controller vibration without input lag** — Wine waited for each rumble write twice (XInput and the HID bus driver held the controller's lock during a Bluetooth/USB round trip). Both are fixed.
 - **Raw mouse input, no stick acceleration, 0.08 deadzone, native-resolution fullscreen, Game Mode.**
+- **Your settings from the start**: fullscreen at the display's resolution, sync every frame, automatic texture quality, 16x anisotropic filtering, shader warming (BO1); a Black Ops II hardware profile made on an Apple GPU so it starts fullscreen instead of in a small window.
+- **Plutonium's folder picker** opens with shortcuts to your Mac home, Downloads, Documents and the game folders.
 - **Every patch can be switched off** in each game's settings, with an ⓘ explaining what it does.
 - **Zombies Declassified** (Black Ops II's unreleased "DLC 5": BO1 and World at War zombies maps in BO2) — one-click install, verify, remove and play.
 - **Black Ops III**: installs BO3 Mac Client into your Steam game and opens its server browser (renamed *T7 Server Browser*): pick a community server, type your name, Join. Ranked spoofing is opt-in, with its risks stated.
@@ -38,7 +40,7 @@ Highlights:
 ## Requirements
 
 - A Mac with Apple silicon, macOS 14 or later, and Rosetta 2.
-- **CrossOver 26.3** in Applications (the free trial is enough: Black Ops Mac copies its runtime once and you never open it).
+- Nothing else: the engine downloads the Wine runtime of CrossOver 26.3 straight from CodeWeavers (checked against its SHA-256) and adds our patches. CrossOver itself is never installed or opened (an installed CrossOver 26.3 is used if you have one).
 - Your own copies of the games:
   - Black Ops / Black Ops II folders with `plutonium.exe` inside (from [plutonium.pw](https://plutonium.pw)), and a Plutonium account to play online.
   - Black Ops III from Steam (the Mac version).

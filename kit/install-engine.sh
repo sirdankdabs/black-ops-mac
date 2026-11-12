@@ -3,8 +3,8 @@
 #
 #   install-engine.sh [--update-x87]
 #
-# The base is the runtime of CodeWeavers' CrossOver 26.3, copied from the
-# installed CrossOver.app (the app itself is never modified). Over it go:
+# The base is the Wine runtime of CodeWeavers' CrossOver 26.3: from an installed
+# CrossOver.app, or else from CodeWeavers' own download of it (no install needed). Over it go:
 #  - our ntdll.so (patches/wine-ntdll.patch): emulated execution breakpoints
 #    under Rosetta (what Plutonium needs to start), execute-on-demand when a
 #    program turns DEP off, and the x87sidecar handshake;
@@ -23,6 +23,9 @@ set -euo pipefail
 kit=$(cd -- "$(dirname -- "$0")" && pwd)
 home=${BOM_HOME:-"$HOME/Library/Application Support/Black Ops Mac"}
 cx_app=${CROSSOVER_APP:-/Applications/CrossOver.app}
+cx_zip_version=26.3.0
+cx_zip_url="https://media.codeweavers.com/pub/crossover/cxmac/demo/crossover-$cx_zip_version.zip"
+cx_zip_sha256=8688e0848c4e5f79f1cc351cb52d32447da00c6c00cfd3b4bb2d164d44589a26
 engine="$home/engine"
 downloads="$home/downloads"
 cx_version_wanted=26.3
@@ -82,15 +85,37 @@ step "Checking this Mac"
 [ "$(uname -m)" = arm64 ] || die "Black Ops Mac is for Apple Silicon Macs"
 /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null ||
   die "Rosetta 2 is missing. Install it with: softwareupdate --install-rosetta --agree-to-license"
-[ -d "$cx_app/Contents/SharedSupport/CrossOver/lib/wine" ] ||
-  die "CrossOver is not installed in /Applications (its free trial is enough: codeweavers.com)"
-cx_version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$cx_app/Contents/Info.plist" 2>/dev/null || echo "?")
-case "$cx_version" in
-  "$cx_version_wanted"|"$cx_version_wanted".*) ;;
-  *) die "CrossOver $cx_version is installed; this engine is built for CrossOver $cx_version_wanted" ;;
-esac
-
 mkdir -p "$home" "$downloads"
+
+# CrossOver's runtime: from an installed CrossOver 26.3 when there is one,
+# otherwise from CodeWeavers' own download of it (checked against its
+# SHA-256). Only the Wine runtime inside is used; CrossOver itself is never
+# installed or opened.
+cx_ok() {
+  [ -d "$1/Contents/SharedSupport/CrossOver/lib/wine" ] || return 1
+  case "$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$1/Contents/Info.plist" 2>/dev/null)" in
+    "$cx_version_wanted"|"$cx_version_wanted".*) return 0 ;; *) return 1 ;;
+  esac
+}
+if ! cx_ok "$cx_app"; then
+  cx_app="$downloads/CrossOver-$cx_zip_version.app"
+  if ! cx_ok "$cx_app"; then
+    zip="$downloads/crossover-$cx_zip_version.zip"
+    if [ ! -f "$zip" ] || [ "$(shasum -a 256 "$zip" | cut -d' ' -f1)" != "$cx_zip_sha256" ]; then
+      step "Downloading CrossOver $cx_zip_version's runtime from CodeWeavers (390 MB)"
+      curl -fL -C - --retry 3 -o "$zip.part" "$cx_zip_url" 2>/dev/null ||
+        curl -fL --retry 3 -o "$zip.part" "$cx_zip_url" || die "could not download CrossOver from codeweavers.com"
+      mv -f "$zip.part" "$zip"
+    fi
+    [ "$(shasum -a 256 "$zip" | cut -d' ' -f1)" = "$cx_zip_sha256" ] || { rm -f "$zip"; die "the CrossOver download is damaged; try again"; }
+    step "Unpacking the runtime"
+    rm -rf "$downloads/cx.tmp"; mkdir -p "$downloads/cx.tmp"
+    ditto -x -k "$zip" "$downloads/cx.tmp" || die "cannot unpack the CrossOver download"
+    rm -rf "$cx_app"; mv "$downloads/cx.tmp/CrossOver.app" "$cx_app"; rm -rf "$downloads/cx.tmp" "$zip"
+    cx_ok "$cx_app" || die "unexpected CrossOver download"
+  fi
+fi
+cx_version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$cx_app/Contents/Info.plist" 2>/dev/null || echo "?")
 new="$engine.new"
 rm -rf "$new"
 
