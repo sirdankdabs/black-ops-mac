@@ -13,6 +13,9 @@ import re
 import sys
 
 KEY = b"<key>LSApplicationCategoryType</key><string>public.app-category.action-games</string>"
+# and the reason it uses the microphone (games' voice chat): without one,
+# macOS never answers Wine's request for microphone access and the game waits
+MIC = b"<key>NSMicrophoneUsageDescription</key><string>In-game voice chat.</string>"
 
 path = sys.argv[1]
 data = bytearray(open(path, "rb").read())
@@ -22,12 +25,19 @@ if start < 0 or end < 0:
     sys.exit("no embedded Info.plist")
 end += len(b"</plist>")
 plist = bytes(data[start:end])
-if b"LSApplicationCategoryType" in plist:
+add = b""
+if b"LSApplicationCategoryType" not in plist: add += KEY
+if b"NSMicrophoneUsageDescription" not in plist: add += MIC
+if not add:
     print("already")
     sys.exit(0)
 new = re.sub(rb"<!--.*?-->", b"", plist)
 new = re.sub(rb">\s+<", b"><", new)
-new = new.replace(b"</dict>", KEY + b"</dict>")
+new = new.replace(b"</dict>", add + b"</dict>")
+if len(new) > len(plist):
+    # make room: entries macOS no longer uses
+    new = re.sub(rb"<key>CFBundleSignature</key><string>[^<]*</string>", b"", new)
+    new = re.sub(rb"<key>CFBundleAllowMixedLocalizations</key><(true|false)/>", b"", new)
 if len(new) > len(plist):
     sys.exit("no room in the embedded Info.plist")
 new += b"\n" * (len(plist) - len(new))

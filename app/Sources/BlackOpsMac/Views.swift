@@ -8,7 +8,7 @@ struct BlackOpsMacApp: App {
         WindowGroup("Black Ops Mac") {
             ContentView()
                 .environmentObject(state)
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 1080, minHeight: 640)
                 .onAppear { state.checkUpdates() }
         }
         .windowStyle(.hiddenTitleBar)
@@ -29,7 +29,7 @@ struct ContentView: View {
                 GameRow(game: game).tag(game)
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240)
+            .navigationSplitViewColumnWidth(min: 240, ideal: 250, max: 320)
             .safeAreaInset(edge: .bottom) { EngineFooter(showLog: $showLog) }
         } detail: {
             GameDetail(game: selection)
@@ -110,17 +110,6 @@ struct GameDetail: View {
             }
             .padding(32)
         }
-        .toolbar {
-            if game.usesEngine {
-                ToolbarItem {
-                    Button { showSettings = true } label: {
-                        Label("Settings", systemImage: "slider.horizontal.3").labelStyle(.titleAndIcon)
-                    }
-                    .foregroundStyle(.white)
-                    .help("Settings and patches")
-                }
-            }
-        }
         .sheet(isPresented: $showSettings) { SettingsView(game: game) }
         .onAppear {
             if game.usesEngine, UserDefaults.standard.string(forKey: "openSettings") == game.rawValue {
@@ -180,7 +169,8 @@ struct PlutoniumGameView: View {
                         }
                         .disabled(state.running != nil || state.progress != nil)
                     }
-                    BigButton(title: "Settings", symbol: "slider.horizontal.3") { showSettings = true }
+                    BigButton(title: "Settings", symbol: "slider.horizontal.3", outlined: true) { showSettings = true }
+                        .help("Settings and patches")
                 }
                 if state.running == game {
                     Button { state.stop() } label: { Label("Stop the game", systemImage: "stop.fill") }
@@ -451,6 +441,7 @@ struct BigButton: View {
     let title: String
     let symbol: String
     var primary = false
+    var outlined = false
     let action: () -> Void
     @Environment(\.isEnabled) private var enabled
 
@@ -464,7 +455,7 @@ struct BigButton: View {
             .foregroundStyle(primary ? .black : .white)
             .background(primary ? AnyShapeStyle(.white) : AnyShapeStyle(.white.opacity(0.14)),
                         in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(primary ? 0 : 0.25)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(primary ? 0 : outlined ? 0.95 : 0.25), lineWidth: outlined ? 2 : 1))
             .opacity(enabled ? 1 : 0.45)
         }
         .buttonStyle(.plain)

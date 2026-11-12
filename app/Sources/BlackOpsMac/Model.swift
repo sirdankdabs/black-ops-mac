@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import SwiftUI
 
@@ -387,6 +388,15 @@ final class AppState: ObservableObject {
     }
 
     func play(_ game: Game, mode: PlayMode) {
+        // The games open the microphone (voice chat); Wine then waits for
+        // macOS's answer. Ask here, once, so the question shows over this
+        // window instead of behind the game's fullscreen loading screen.
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in
+                Task { @MainActor in self.play(game, mode: mode) }
+            }
+            return
+        }
         running = game
         settings["LAST_GAME"] = game.rawValue
         settings.save()

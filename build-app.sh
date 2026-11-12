@@ -38,6 +38,7 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Black Ops Mac uses the microphone for in-game voice chat in Black Ops and Black Ops II.</string>
 </dict>
 </plist>
 EOF
