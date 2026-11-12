@@ -686,30 +686,6 @@ static void server_id_incoming(const uint8_t *bytes, size_t length) {
     // Big reliable messages: gamestates (tracked in hook_CL_ParseGamestate)
     // or large server commands; neither is part of a snapshot burst.
     if ((bytes[18] & 0x40) && length >= 800) return;
-    // Snapshots of a busy match are big (hundreds of bytes); before we are in
-    // the world the server only sends ~41-byte keepalives. A server limited by
-    // the client's rate sends them a few per second, never a burst, so one
-    // big unreliable packet is enough: attribute it to the candidate the
-    // server saw a round trip earlier.
-    if (bytes[18] == 0x00 && length >= 200 && sid.searching && !sid.hit_value && !sid.zero_hit) {
-        if (!sid.sent_value) {
-            sid.zero_hit = 1;
-            return;
-        }
-        uint64_t when = now_ms();
-        unsigned count = sid.sent_count;
-        for (unsigned i = 0; i < 16 && i < count; ++i) {
-            unsigned slot = (count - 1 - i) % 16;
-            if (sid.sent[slot].time + 250 <= when) {
-                sid.hit_delay = (int)(when - sid.sent[slot].time);
-                sid.alt_value = (i + 1 < 16 && i + 1 < count) ? sid.sent[(count - 2 - i) % 16].value : 0;
-                sid.hit_value = sid.sent[slot].value ? sid.sent[slot].value : -1;
-                break;
-            }
-        }
-        if (!sid.hit_value) sid.hit_value = sid.sent_value ? sid.sent_value : -1;
-        return;
-    }
     if (bytes[18] != 0x00 || !sid.searching || !sid.sent_value || sid.hit_value) return;
     // Burst = 8 unreliable packets within 400 ms; it starts at the oldest.
     static uint64_t recent[8];
@@ -785,8 +761,12 @@ static void server_id_frame(void) {
     // server has let us in. If the movie still runs 10 s later, end the wait.
     static uint64_t joined_at;
     static bool start_signalled, forced;
-    if (sid.searching || state != 10) { joined_at = 0; start_signalled = forced = false; }
-    if (state == 10 && !sid.searching && (sid.sent_value || sid.zero_hit) && level_loaded()) {
+    // The signal only ends the loading movie (the client still enters the
+    // world when the server lets it in), so give it as soon as the level is
+    // loaded, also while the server id is still being searched: otherwise the
+    // whole intro cutscene plays first.
+    if (state != 10) { joined_at = 0; start_signalled = forced = false; }
+    if (state == 10 && level_loaded()) {
         uint64_t now = now_ms();
         if (!joined_at) joined_at = now;
         volatile uint32_t *cinematic_flags = (volatile uint32_t *)MAC_ADDR(0x15999da0);
