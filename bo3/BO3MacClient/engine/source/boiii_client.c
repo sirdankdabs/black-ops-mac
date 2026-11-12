@@ -539,8 +539,9 @@ static int hook_LiveUser_GetControllerFromXuid(uint64_t xuid) {
 //   (id ^ sv.serverId) & 0xf0 == 0 -> enters the world if PRIMED, else the
 //                                 packet is ignored (map_restart in flight)
 //   otherwise                  -> gamestate resent
-// sv.serverId = (old + 0x10) & 0xff per map load, high nibble never 0; the low
-// nibble only moves on map_restart.
+// sv.serverId = (old + 0x10) & 0xff per map load, so after enough map loads a
+// long-running server's high nibble can be 0; the low nibble only moves on
+// map_restart.
 //
 // Search without reloading the map: the server only resends the gamestate
 // when a mismatching packet acknowledges a message newer than the gamestate
@@ -561,6 +562,8 @@ static int hook_LiveUser_GetControllerFromXuid(uint64_t xuid) {
 static struct {
     int fixed, active, value, high, low, low_tries, last_state;
     volatile int searching, sent_value, hit_value, alt_value, gamestate_seq, rejected, hit_delay;
+    // The server let us in while id 0 was being sent (its high nibble is 0).
+    volatile int zero_hit;
     uint64_t pending_since;
     // Recent probes (value, send time) to attribute the snapshot burst.
     struct { int value; uint64_t time; } sent[16];
@@ -610,7 +613,7 @@ static void server_id_reset(void) {
     sid.low_tries = 0;
     sid.last_state = 0;
     sid.searching = !sid.fixed;
-    sid.sent_value = sid.hit_value = sid.alt_value = sid.rejected = 0;
+    sid.sent_value = sid.hit_value = sid.alt_value = sid.rejected = sid.zero_hit = 0;
     sid.sent_count = 0;
     sid.gamestate_seq = -1;
     sid.pending_since = 0;
@@ -639,7 +642,7 @@ static void server_id_outgoing(uint8_t *packet, size_t length) {
     // them overflow the client (EXE_ERR_RELIABLE_CYCLED_OUT). Id 0 never
     // matches (the server's high nibble is never 0) and, with the ack
     // clamped, doesn't trigger a gamestate resend either.
-    if (!level_loaded()) {
+    if (!level_loaded() || sid.zero_hit) {
         packet[29] = 0;
         static int logged_wait;
         if (!logged_wait) { logged_wait = 1; t7_log("[BO3MacFix] BOIII: waiting for the level to load before joining\n"); }
@@ -655,8 +658,8 @@ static void server_id_outgoing(uint8_t *packet, size_t length) {
         return;
     }
     if (sid.sent_count && sid.sent[(sid.sent_count - 1) % 16].value == sid.value) {
-        // Held long enough: move to the next high nibble.
-        sid.high = sid.high % 15 + 1;
+        // Held long enough: move to the next high nibble (0 included).
+        sid.high = (sid.high + 1) % 16;
         sid.value = (sid.high << 4) | sid.low;
     }
     held_since = now;
@@ -683,6 +686,30 @@ static void server_id_incoming(const uint8_t *bytes, size_t length) {
     // Big reliable messages: gamestates (tracked in hook_CL_ParseGamestate)
     // or large server commands; neither is part of a snapshot burst.
     if ((bytes[18] & 0x40) && length >= 800) return;
+    // Snapshots of a busy match are big (hundreds of bytes); before we are in
+    // the world the server only sends ~41-byte keepalives. A server limited by
+    // the client's rate sends them a few per second, never a burst, so one
+    // big unreliable packet is enough: attribute it to the candidate the
+    // server saw a round trip earlier.
+    if (bytes[18] == 0x00 && length >= 200 && sid.searching && !sid.hit_value && !sid.zero_hit) {
+        if (!sid.sent_value) {
+            sid.zero_hit = 1;
+            return;
+        }
+        uint64_t when = now_ms();
+        unsigned count = sid.sent_count;
+        for (unsigned i = 0; i < 16 && i < count; ++i) {
+            unsigned slot = (count - 1 - i) % 16;
+            if (sid.sent[slot].time + 250 <= when) {
+                sid.hit_delay = (int)(when - sid.sent[slot].time);
+                sid.alt_value = (i + 1 < 16 && i + 1 < count) ? sid.sent[(count - 2 - i) % 16].value : 0;
+                sid.hit_value = sid.sent[slot].value ? sid.sent[slot].value : -1;
+                break;
+            }
+        }
+        if (!sid.hit_value) sid.hit_value = sid.sent_value ? sid.sent_value : -1;
+        return;
+    }
     if (bytes[18] != 0x00 || !sid.searching || !sid.sent_value || sid.hit_value) return;
     // Burst = 8 unreliable packets within 400 ms; it starts at the oldest.
     static uint64_t recent[8];
@@ -723,9 +750,10 @@ static void server_id_frame(void) {
     int32_t state = *client_state(0);
     int32_t last = sid.last_state;
     sid.last_state = state;
+    if (sid.searching && sid.zero_hit && level_loaded()) sid.hit_value = -1;
     if (sid.searching && sid.hit_value) {
         sid.searching = 0;
-        sid.value = sid.hit_value;
+        sid.value = sid.hit_value < 0 ? sid.low : sid.hit_value;
         sid.high = sid.value >> 4;
         t7_log("[BO3MacFix] BOIII: server accepted serverId 0x%02x after %d ms (alternative 0x%02x), entering the game\n",
                sid.value, sid.hit_delay, sid.alt_value);
@@ -737,7 +765,8 @@ static void server_id_frame(void) {
         // Try the alternative probe first, then keep searching.
         sid.rejected = 0;
         sid.active = 0;
-        int next = sid.alt_value ? sid.alt_value : (((sid.high % 15 + 1) << 4) | sid.low);
+        sid.zero_hit = 0;
+        int next = sid.alt_value ? sid.alt_value : ((((sid.high + 1) % 16) << 4) | sid.low);
         sid.high = next >> 4;
         sid.value = (sid.high << 4) | sid.low;
         sid.hit_value = sid.sent_value = sid.alt_value = 0;
@@ -757,7 +786,7 @@ static void server_id_frame(void) {
     static uint64_t joined_at;
     static bool start_signalled, forced;
     if (sid.searching || state != 10) { joined_at = 0; start_signalled = forced = false; }
-    if (state == 10 && !sid.searching && sid.sent_value && level_loaded()) {
+    if (state == 10 && !sid.searching && (sid.sent_value || sid.zero_hit) && level_loaded()) {
         uint64_t now = now_ms();
         if (!joined_at) joined_at = now;
         volatile uint32_t *cinematic_flags = (volatile uint32_t *)MAC_ADDR(0x15999da0);
