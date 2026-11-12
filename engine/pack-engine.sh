@@ -22,7 +22,7 @@ rm -rf "$stage/include" "$stage/share/man" "$stage/share/applications"
 step "Adding the libraries Wine loads"
 mkdir -p "$stage/lib64"
 # everything the given libraries need from the template, recursively
-queue=(libfreetype.6.dylib libgnutls.30.dylib libSDL2-2.0.0.dylib libinotify.0.dylib)
+queue=(libfreetype.6.dylib libgnutls.30.dylib libSDL2-2.0.0.dylib libSDL3.0.dylib libinotify.0.dylib)
 seen=" "
 while [ ${#queue[@]} -gt 0 ]; do
   lib=${queue[0]}; queue=("${queue[@]:1}")
@@ -37,6 +37,8 @@ done
 # the names Wine opens them by
 ln -sf libfreetype.6.dylib "$stage/lib64/libfreetype.dylib"
 ln -sf libgnutls.30.dylib "$stage/lib64/libgnutls.dylib"
+# the template's SDL2 is sdl2-compat (SDL2 on SDL3): it opens SDL3 by this name
+ln -sf libSDL3.0.dylib "$stage/lib64/libSDL3.dylib"
 for l in "$stage"/lib64/*.dylib; do
   [ -L "$l" ] && continue
   install_name_tool -add_rpath @loader_path "$l" 2>/dev/null || true
@@ -51,8 +53,14 @@ done
 install_name_tool -add_rpath @loader_path/../lib64 "$stage/bin/wine" 2>/dev/null || true
 codesign -fs - "$stage/bin/wine" 2>/dev/null
 
-# wineserver links libinotify (file change notifications) by its bare name
-install_name_tool -change libinotify.dylib @rpath/libinotify.0.dylib "$stage/bin/wineserver"
+# wineserver and some modules (winebus: controllers) link libinotify by its
+# bare name, which macOS cannot load: point them at the bundled copy
+for f in "$stage"/bin/* "$stage"/lib/wine/x86_64-unix/*.so; do
+  if otool -L "$f" 2>/dev/null | grep -q "^[[:space:]]*libinotify.dylib"; then
+    install_name_tool -change libinotify.dylib @rpath/libinotify.0.dylib "$f"
+    codesign -fs - "$f" 2>/dev/null
+  fi
+done
 install_name_tool -add_rpath @executable_path/../lib64 "$stage/bin/wineserver"
 codesign -fs - "$stage/bin/wineserver" 2>/dev/null
 

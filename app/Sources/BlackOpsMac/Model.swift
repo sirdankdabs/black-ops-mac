@@ -250,6 +250,7 @@ final class AppState: ObservableObject {
     @Published var bo3Latest: String?
     @Published var bo3: [String: String] = [:]   // bo3.sh status: game, state, installed
     @Published var zd: [String: String] = [:]    // zombies-declassified.sh status: installed, latest
+    @Published var settingsGame: Game?           // the settings panel shown over the window
     @Published var x87Latest: String?
     @Published var refreshToken = 0           // bumped to re-read statuses
 

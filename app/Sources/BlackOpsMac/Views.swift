@@ -36,6 +36,24 @@ struct ContentView: View {
                 .id("\(selection.rawValue)-\(state.refreshToken)")
         }
         .sheet(isPresented: $showLog) { LogView() }
+        .overlay {
+            if let g = state.settingsGame {
+                ZStack {
+                    // clicking outside the panel closes it without saving
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { state.settingsGame = nil }
+                    SettingsView(game: g) { state.settingsGame = nil }
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(radius: 30)
+                        .onExitCommand { state.settingsGame = nil }
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: state.settingsGame)
+        .onChange(of: selection) { state.settingsGame = nil }
         .alert("Something went wrong", isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })) {
             Button("OK") { state.error = nil }
             Button("Show log") { state.error = nil; showLog = true }
@@ -76,7 +94,6 @@ struct GameRow: View {
 struct GameDetail: View {
     @EnvironmentObject var state: AppState
     let game: Game
-    @State private var showSettings = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -110,11 +127,10 @@ struct GameDetail: View {
             }
             .padding(32)
         }
-        .sheet(isPresented: $showSettings) { SettingsView(game: game) }
         .onAppear {
             if game.usesEngine, UserDefaults.standard.string(forKey: "openSettings") == game.rawValue {
                 UserDefaults.standard.removeObject(forKey: "openSettings")
-                showSettings = true
+                state.settingsGame = game
             }
         }
     }
@@ -124,7 +140,6 @@ struct PlutoniumGameView: View {
     @EnvironmentObject var state: AppState
     let game: Game
     @State private var confirmRemove = false
-    @State private var showSettings = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -139,7 +154,6 @@ struct PlutoniumGameView: View {
                     .disabled(state.progress != nil)
             }
         }
-        .sheet(isPresented: $showSettings) { SettingsView(game: game) }
         .confirmationDialog("Remove the \(game.title) setup?", isPresented: $confirmRemove) {
             Button("Remove the \(game.title) setup", role: .destructive) { state.removeSetup(game.rawValue) }
             Button("Remove everything (engine and Plutonium)", role: .destructive) { state.removeSetup("all") }
@@ -169,7 +183,7 @@ struct PlutoniumGameView: View {
                         }
                         .disabled(state.running != nil || state.progress != nil)
                     }
-                    BigButton(title: "Settings", symbol: "slider.horizontal.3", outlined: true) { showSettings = true }
+                    BigButton(title: "Settings", symbol: "slider.horizontal.3", outlined: true) { state.settingsGame = game }
                         .help("Settings and patches")
                 }
                 if state.running == game {
@@ -353,7 +367,7 @@ struct BO3View: View {
             Button(state.bo3Installed ? "Update" : "Install") { state.installBO3() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Downloads the latest BO3 Mac Client from github.com/sirdankdabs/BO3-Mac-Client and runs its installer: BO3MacFix goes into your Black Ops III from Steam (Steam's launcher is kept as a backup), and its server browser opens when it is done.")
+            Text("Installs BO3 Mac Client, which comes with Black Ops Mac: BO3MacFix goes into your Black Ops III from Steam (Steam's launcher is kept as a backup), and its server browser opens when it is done.")
         }
         .task { state.refreshBO3() }
     }
@@ -491,8 +505,8 @@ struct EngineFooter: View {
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
-    @Environment(\.dismiss) private var dismiss
     let game: Game
+    var close: () -> Void
     @State private var fps = "monitor"
     @State private var patches: [String: Bool] = [:]
     @State private var deadzone = 0.08
@@ -500,6 +514,25 @@ struct SettingsView: View {
     @State private var mods = ""
 
     var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("\(game.title) settings").font(.system(size: 15, weight: .bold))
+                Spacer()
+                Button(action: close) {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Close without saving")
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
+            form
+        }
+        .frame(width: 540, height: 560)
+        .onAppear(perform: load)
+    }
+
+    private var form: some View {
         Form {
             Section("Play") {
                 TextField("Player name (offline)", text: $name)
@@ -542,14 +575,12 @@ struct SettingsView: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Save") { save(); dismiss() }.keyboardShortcut(.defaultAction)
+                Button("Cancel", action: close)
+                Button("Save") { save(); close() }.keyboardShortcut(.defaultAction)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 500)
-        .padding(8)
-        .onAppear(perform: load)
+        .scrollContentBackground(.hidden)
     }
 
     private func load() {

@@ -34,7 +34,7 @@ Highlights:
 - **Plutonium's folder picker** opens with shortcuts to your Mac home, Downloads, Documents and the game folders.
 - **Every patch can be switched off** in each game's settings, with an ⓘ explaining what it does.
 - **Zombies Declassified** (Black Ops II's unreleased "DLC 5": BO1 and World at War zombies maps in BO2) — one-click install, verify, remove and play.
-- **Black Ops III**: installs BO3 Mac Client into your Steam game and opens its server browser (renamed *T7 Server Browser*): pick a community server, type your name, Join. Ranked spoofing is opt-in, with its risks stated.
+- **Black Ops III**: installs BO3 Mac Client (included; source in `bo3/`) into your Steam game and opens its server browser (renamed *T7 Server Browser*): pick a community server, type your name, Join. Ranked spoofing is opt-in, with its risks stated.
 - **Remove setup** for each game (everything goes to the Trash; your games are never touched).
 
 ## Requirements
@@ -75,6 +75,7 @@ kit/                 what the app runs (also usable from Terminal)
   bo3.sh               BO3 Mac Client install / open / Steam / ranked spoofing
   zombies-declassified.sh   the BO2 mod (via its own verified installer)
   uninstall.sh         remove a game's setup (to the Trash)
+bo3/                 BO3 Mac Client source (SwiftUI browser + engine) and BO3MacFix source (LGPL-2.1)
   prepare-shaders.sh   optional: compile every BO1 map ahead of time
   patches/             source of every change to Wine, DXVK and DXMT
   payload/             the built modules (ntdll.so, winebus.sys, xinput1_3.dll, d3d9.dll, DXMT, MoltenVK shim)
@@ -91,7 +92,7 @@ build-app.sh         builds dist/Black Ops Mac.app
 - **DXVK** by Philip Rebohle and contributors; **Sporif** — the dxvk-async patch; **3Shain** — [DXMT](https://github.com/3Shain/dxmt).
 - **Khronos / MoltenVK** contributors.
 - **Logo-2K** — [Zombies Declassified](https://github.com/Logo-2K/zombies-declassified).
-- **BO3 Mac Client** ([sirdankdabs/BO3-Mac-Client](https://github.com/sirdankdabs/BO3-Mac-Client)), built on **BO3MacFix** by Emma / InvoxiPlayGames and Anthony / serious, with **T7Patch** work by its authors; the community server project behind `master.ezz.lol`.
+- **BO3 Mac Client** (included in `bo3/` and `kit/payload/bo3`), built on **BO3MacFix** by Emma / InvoxiPlayGames and Anthony / serious, with **T7Patch** work by its authors; the community server project behind `master.ezz.lol`.
 
 Not affiliated with Activision, Treyarch, Aspyr, Valve, CodeWeavers or Plutonium. Call of Duty and Black Ops are trademarks of Activision Publishing, Inc. You need your own copies of the games.
 
