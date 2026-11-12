@@ -1,0 +1,935 @@
+--- a/dlls/ntdll/unix/signal_x86_64.c
++++ b/dlls/ntdll/unix/signal_x86_64.c
+@@ -1352,6 +1352,32 @@
+ /***********************************************************************
+  *              set_thread_wow64_context
+  */
++/* bo: emulated execution breakpoints for 32-bit code under Rosetta (below). */
++static BOOL bo_bp_active;
++static void bo_bp_update_self( const I386_CONTEXT *context );
++static BOOL bo_bp_resume_fixup( const I386_CONTEXT *context, I386_CONTEXT *copy );
++static void bo_bp_rearm_hidden(void);
++
++static __thread BOOL bo_bp_dispatching;  /* next wow64 context set is the exception's own */
++
++/* bo: debug-register logging (BO_DRLOG=1), to see what a program asks for. */
++static int bo_drlog = -1;
++static DWORD bo_handle_tid( HANDLE handle )
++{
++    THREAD_BASIC_INFORMATION tbi;
++    if (handle == GetCurrentThread()) return GetCurrentThreadId();
++    if (NtQueryInformationThread( handle, ThreadBasicInformation, &tbi, sizeof(tbi), NULL )) return 0;
++    return HandleToULong( tbi.ClientId.UniqueThread );
++}
++static void bo_log_dr( const char *what, HANDLE handle, const I386_CONTEXT *c )
++{
++    if (bo_drlog < 0) { const char *e = getenv( "BO_DRLOG" ); bo_drlog = e && *e == '1'; }
++    if (!bo_drlog) return;
++    fprintf( stderr, "[drlog] %s caller=%04x target=%04x dr0=%08x dr1=%08x dr2=%08x dr3=%08x dr6=%08x dr7=%08x\n",
++             what, (unsigned)GetCurrentThreadId(), (unsigned)bo_handle_tid( handle ),
++             (unsigned)c->Dr0, (unsigned)c->Dr1, (unsigned)c->Dr2, (unsigned)c->Dr3, (unsigned)c->Dr6, (unsigned)c->Dr7 );
++}
++
+ NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size )
+ {
+     BOOL self = (handle == GetCurrentThread());
+@@ -1362,6 +1388,27 @@
+ 
+     if (size != sizeof(I386_CONTEXT)) return STATUS_INFO_LENGTH_MISMATCH;
+ 
++    if (flags & CONTEXT_I386_DEBUG_REGISTERS) bo_log_dr( "set", handle, context );
++
++    /* Resuming on an emulated breakpoint with RF set: run the original
++     * instruction from its trampoline instead of hitting the int3 again. */
++    if (self && (flags & CONTEXT_I386_CONTROL) && bo_bp_active)
++    {
++        static __thread I386_CONTEXT bo_copy;
++        if (bo_bp_resume_fixup( context, &bo_copy )) context = &bo_copy;
++        /* The exception dispatch itself sets the 32-bit context once before
++         * the handlers run; re-arm only when the thread really resumes. */
++        if (bo_bp_dispatching)
++        {
++            bo_bp_dispatching = FALSE;
++            if (bo_drlog > 0) fprintf( stderr, "[drlog] dispatch set skipped, eip %08x\n", (unsigned)context->Eip );
++        }
++        /* The dispatch then jumps to the 32-bit dispatcher with a
++         * control-only context; the handler's resume (NtContinue) carries the
++         * full context. */
++        else if ((flags & CONTEXT_I386_INTEGER) == CONTEXT_I386_INTEGER) bo_bp_rearm_hidden();
++    }
++
+     /* debug registers require a server call */
+     if (self && (flags & CONTEXT_I386_DEBUG_REGISTERS))
+         self = (amd64_thread_data()->dr0 == context->Dr0 &&
+@@ -1380,6 +1427,9 @@
+             /* CW HACK 22131 */
+             WARN_(seh)( "Setting debug registers is not supported under Rosetta, faking success\n" );
+             ret = STATUS_SUCCESS;
++            /* bo: emulate the thread's execution breakpoints instead. */
++            bo_bp_active = TRUE;
++            if (self) bo_bp_update_self( context );
+         }
+ #endif
+         if (ret || !self) return ret;
+@@ -1480,6 +1530,16 @@
+     if (!self)
+     {
+         NTSTATUS ret = get_thread_context( handle, context, &self, IMAGE_FILE_MACHINE_I386 );
++        if (!ret && self && bo_bp_active && (needed_flags & CONTEXT_I386_DEBUG_REGISTERS))
++        {
++            context->Dr0 = amd64_thread_data()->dr0;
++            context->Dr1 = amd64_thread_data()->dr1;
++            context->Dr2 = amd64_thread_data()->dr2;
++            context->Dr3 = amd64_thread_data()->dr3;
++            context->Dr6 = amd64_thread_data()->dr6;
++            context->Dr7 = amd64_thread_data()->dr7;
++        }
++        if (!ret && (needed_flags & CONTEXT_I386_DEBUG_REGISTERS)) bo_log_dr( "get", handle, context );
+         if (ret || !self) return ret;
+         /* update the cached version of the debug registers */
+         if (needed_flags & CONTEXT_I386_DEBUG_REGISTERS)
+@@ -1572,6 +1632,9 @@
+ }
+ 
+ 
++static __thread BOOL bo_bp_raising;
++static __thread DWORD_PTR bo_bp_saved_dr[6];  /* dr0-dr3, dr6, dr7 of an emulated hit */
++
+ /***********************************************************************
+  *           setup_raise_exception
+  */
+@@ -1599,6 +1662,17 @@
+             NtGetContextThread(GetCurrentThread(), context);
+             context->ContextFlags |= saved_flags;  /* restore flags */
+         }
++        if (bo_bp_raising)
++        {
++            /* the server knows nothing of emulated breakpoints, and the call
++             * above replaced the thread's registers with its zeros */
++            context->Dr0 = amd64_thread_data()->dr0 = bo_bp_saved_dr[0];
++            context->Dr1 = amd64_thread_data()->dr1 = bo_bp_saved_dr[1];
++            context->Dr2 = amd64_thread_data()->dr2 = bo_bp_saved_dr[2];
++            context->Dr3 = amd64_thread_data()->dr3 = bo_bp_saved_dr[3];
++            context->Dr6 = amd64_thread_data()->dr6 = bo_bp_saved_dr[4];
++            context->Dr7 = amd64_thread_data()->dr7 = bo_bp_saved_dr[5];
++        }
+         context->EFlags &= ~0x100;  /* clear single-step flag */
+     }
+ 
+@@ -2539,6 +2613,14 @@
+         }
+         break;
+     case TRAP_x86_PAGEFLT:  /* Page fault */
++        /* bo: an instruction fetch from a page that is not executable yet,
++         * with DEP turned off (see virtual_set_exec_on_demand) */
++        if ((ULONG_PTR)siginfo->si_addr - (ULONG_PTR)RIP_sig(ucontext) < 16 &&
++            virtual_exec_on_demand( siginfo->si_addr ))
++        {
++            leave_handler( ucontext );
++            return;
++        }
+         rec.NumberParameters = 2;
+         rec.ExceptionInformation[0] = (ERROR_sig(ucontext) >> 1) & 0x09;
+         rec.ExceptionInformation[1] = (ULONG_PTR)siginfo->si_addr;
+@@ -2583,6 +2665,433 @@
+     }
+     if (handle_syscall_fault( ucontext, &rec, &context.c )) return;
+     setup_raise_exception( ucontext, &rec, &context );
++}
++
++
++/***********************************************************************
++ * bo: emulated execution breakpoints for 32-bit (wow64) code under Rosetta
++ *
++ * Rosetta does not deliver x86 debug-register traps, so Wine could only
++ * pretend that setting them worked; a program that waits for its breakpoint
++ * (Plutonium sets one on the instruction after a call) waits forever.
++ *
++ * An enabled execution breakpoint of a thread (DR0-DR3 with R/W 00 in DR7)
++ * is armed as an int3 written over the first byte of its instruction, with a
++ * trampoline that runs the original instruction and jumps back. When the
++ * int3 traps:
++ *  - in a thread that has that breakpoint enabled, it is reported as the
++ *    hardware would: EXCEPTION_SINGLE_STEP at the address, Eip on it, DR6
++ *    naming the register;
++ *  - in any other thread, execution goes on through the trampoline.
++ * Resuming on the address with RF (EFLAGS bit 16) set, as handlers do to
++ * run the instruction once, also goes through the trampoline. A breakpoint
++ * is disarmed (the byte restored) when no thread has it enabled any more.
++ * Data breakpoints (R/W other than 00) are not emulated.
++ */
++
++#define BO_BP_MAX     64
++#define BO_TRAMP_SIZE 32
++#define BO_EFLAGS_RF  0x10000
++
++struct bo_bp
++{
++    volatile ULONG addr;  /* 0: free */
++    LONG  refs;           /* threads that have it enabled */
++    BYTE  orig;           /* the byte under the int3 */
++    volatile LONG hidden; /* original byte put back while a handler runs */
++    BYTE *tramp;          /* original instruction + jump back, NULL if it cannot be relocated */
++};
++
++static struct bo_bp bo_bps[BO_BP_MAX];
++static pthread_mutex_t bo_bp_mutex = PTHREAD_MUTEX_INITIALIZER;
++static BYTE *bo_tramp_page;
++static SIZE_T bo_tramp_used, bo_tramp_size;
++
++static int bo_modrm_len( const BYTE *p )
++{
++    BYTE mod = p[0] >> 6, rm = p[0] & 7;
++    int len = 1;
++
++    if (mod == 3) return 1;
++    if (rm == 4)
++    {
++        len++;
++        if (mod == 0 && (p[1] & 7) == 5) len += 4;
++    }
++    else if (mod == 0 && rm == 5) len += 4;
++    if (mod == 1) len += 1;
++    else if (mod == 2) len += 4;
++    return len;
++}
++
++enum { BO_REL_NONE, BO_REL_JMP, BO_REL_CALL, BO_REL_JCC };
++
++/* Length of the 32-bit instruction at p (at address addr), 0 if unknown.
++ * Relative jumps and calls set *rel, *target and, for a jcc, *cond. */
++static int bo_insn_len( const BYTE *p, ULONG addr, int *rel, ULONG *target, BYTE *cond )
++{
++    int i = 0, imm = 4;
++    BYTE op;
++
++    *rel = BO_REL_NONE;
++    for (;; i++)
++    {
++        BYTE b = p[i];
++        if (b == 0x66) imm = 2;
++        else if (b == 0x67) return 0;  /* 16-bit addressing */
++        else if (b != 0xf0 && b != 0xf2 && b != 0xf3 && b != 0x26 && b != 0x2e &&
++                 b != 0x36 && b != 0x3e && b != 0x64 && b != 0x65) break;
++        if (i >= 4) return 0;
++    }
++    op = p[i++];
++
++    if (op == 0x0f)
++    {
++        BYTE op2 = p[i++];
++        if (op2 >= 0x80 && op2 <= 0x8f)
++        {
++            if (imm != 4) return 0;
++            *rel = BO_REL_JCC;
++            *cond = op2 - 0x80;
++            *target = addr + i + 4 + *(const INT *)(p + i);
++            return i + 4;
++        }
++        if (op2 == 0x38) { i++; return i + bo_modrm_len( p + i ); }
++        if (op2 == 0x3a) { i++; return i + bo_modrm_len( p + i ) + 1; }
++        switch (op2)
++        {
++        case 0x05: case 0x06: case 0x07: case 0x08: case 0x09: case 0x0b: case 0x0e:
++        case 0x30 ... 0x37: case 0x77: case 0xa0: case 0xa1: case 0xa2: case 0xa8:
++        case 0xa9: case 0xaa: case 0xc8 ... 0xcf:
++            return i;
++        case 0x70 ... 0x73: case 0xa4: case 0xac: case 0xba: case 0xc2:
++        case 0xc4: case 0xc5: case 0xc6:
++            return i + bo_modrm_len( p + i ) + 1;
++        default:
++            return i + bo_modrm_len( p + i );
++        }
++    }
++    if (op >= 0x70 && op <= 0x7f)
++    {
++        *rel = BO_REL_JCC;
++        *cond = op - 0x70;
++        *target = addr + i + 1 + (signed char)p[i];
++        return i + 1;
++    }
++    if (op < 0x40)
++    {
++        switch (op & 7)
++        {
++        case 0: case 1: case 2: case 3: return i + bo_modrm_len( p + i );
++        case 4: return i + 1;
++        case 5: return i + imm;
++        default: return i;
++        }
++    }
++    switch (op)
++    {
++    case 0x40 ... 0x61: case 0x6c ... 0x6f: case 0x90 ... 0x99: case 0x9b ... 0x9f:
++    case 0xa4 ... 0xa7: case 0xaa ... 0xaf: case 0xc3: case 0xc9: case 0xcb: case 0xcc:
++    case 0xce: case 0xcf: case 0xd6: case 0xd7: case 0xec ... 0xef: case 0xf1: case 0xf4:
++    case 0xf5: case 0xf8 ... 0xfd:
++        return i;
++    case 0x62: case 0x63: case 0x84 ... 0x8f: case 0xc4: case 0xc5: case 0xd0 ... 0xd3:
++    case 0xd8 ... 0xdf: case 0xfe: case 0xff:
++        return i + bo_modrm_len( p + i );
++    case 0x6a: case 0xa8: case 0xb0 ... 0xb7: case 0xcd: case 0xd4: case 0xd5: case 0xe4 ... 0xe7:
++        return i + 1;
++    case 0x68: case 0xa9: case 0xb8 ... 0xbf:
++        return i + imm;
++    case 0x69: case 0x81: case 0xc7:
++        return i + bo_modrm_len( p + i ) + imm;
++    case 0x6b: case 0x80: case 0x82: case 0x83: case 0xc0: case 0xc1: case 0xc6:
++        return i + bo_modrm_len( p + i ) + 1;
++    case 0xa0 ... 0xa3:
++        return i + 4;
++    case 0xc2: case 0xca:
++        return i + 2;
++    case 0xc8:
++        return i + 3;
++    case 0x9a: case 0xea:
++        return i + 6;
++    case 0xf6: case 0xf7:
++    {
++        int len = i + bo_modrm_len( p + i );
++        if (((p[i] >> 3) & 7) < 2) len += (op == 0xf6) ? 1 : imm;
++        return len;
++    }
++    case 0xe8: case 0xe9:
++        if (imm != 4) return 0;
++        *rel = (op == 0xe8) ? BO_REL_CALL : BO_REL_JMP;
++        *target = addr + i + 4 + *(const INT *)(p + i);
++        return i + 4;
++    case 0xeb:
++        *rel = BO_REL_JMP;
++        *target = addr + i + 1 + (signed char)p[i];
++        return i + 1;
++    }
++    return 0;  /* loop/jcxz and anything unknown */
++}
++
++static BYTE *bo_emit_jmp( BYTE *t, ULONG to )
++{
++    t[0] = 0xe9;
++    *(INT *)(t + 1) = to - (PtrToUlong( t ) + 5);
++    return t + 5;
++}
++
++/* Build the trampoline for the instruction at addr (called before the int3
++ * is written). Trampolines live in memory below 2 GB, so 32-bit code can
++ * reach them. Called with bo_bp_mutex held. */
++static BYTE *bo_make_tramp( ULONG addr )
++{
++    const BYTE *code = ULongToPtr( addr );
++    BYTE *start, *t, cond = 0;
++    ULONG target = 0;
++    int rel, len = bo_insn_len( code, addr, &rel, &target, &cond );
++
++    if (!len || len > 15) return NULL;
++    if (!bo_tramp_page || bo_tramp_used + BO_TRAMP_SIZE > bo_tramp_size)
++    {
++        void *mem = NULL;
++        SIZE_T size = 0x10000;
++        if (NtAllocateVirtualMemory( GetCurrentProcess(), &mem, 0x7fffffff, &size,
++                                     MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE ))
++            return NULL;
++        bo_tramp_page = mem;
++        bo_tramp_size = size;
++        bo_tramp_used = 0;
++    }
++    start = t = bo_tramp_page + bo_tramp_used;
++    bo_tramp_used += BO_TRAMP_SIZE;
++
++    switch (rel)
++    {
++    case BO_REL_NONE:
++        memcpy( t, code, len );
++        t = bo_emit_jmp( t + len, addr + len );
++        break;
++    case BO_REL_JMP:
++        t = bo_emit_jmp( t, target );
++        break;
++    case BO_REL_CALL:
++        t[0] = 0x68;  /* push return address */
++        *(ULONG *)(t + 1) = addr + len;
++        t = bo_emit_jmp( t + 5, target );
++        break;
++    case BO_REL_JCC:
++        t[0] = 0x0f;
++        t[1] = 0x80 + cond;
++        *(INT *)(t + 2) = target - (PtrToUlong( t ) + 6);
++        t = bo_emit_jmp( t + 6, addr + len );
++        break;
++    }
++    return start;
++}
++
++static BOOL bo_poke( ULONG addr, BYTE value )
++{
++    void *base = ULongToPtr( addr );
++    SIZE_T size = 1;
++    ULONG old, dummy;
++
++    if (NtProtectVirtualMemory( GetCurrentProcess(), &base, &size, PAGE_EXECUTE_READWRITE, &old ))
++        return FALSE;
++    *(volatile BYTE *)ULongToPtr( addr ) = value;
++    base = ULongToPtr( addr );
++    size = 1;
++    NtProtectVirtualMemory( GetCurrentProcess(), &base, &size, old, &dummy );
++    return TRUE;
++}
++
++static struct bo_bp *bo_bp_find( ULONG addr )
++{
++    int i;
++    for (i = 0; i < BO_BP_MAX; i++) if (bo_bps[i].addr == addr) return &bo_bps[i];
++    return NULL;
++}
++
++static void bo_bp_arm( ULONG addr )
++{
++    struct bo_bp *bp;
++
++    pthread_mutex_lock( &bo_bp_mutex );
++    if ((bp = bo_bp_find( addr ))) bp->refs++;
++    else if ((bp = bo_bp_find( 0 )))
++    {
++        bp->orig = *(volatile BYTE *)ULongToPtr( addr );
++        bp->tramp = bo_make_tramp( addr );
++        bp->refs = 1;
++        __atomic_store_n( &bp->addr, addr, __ATOMIC_SEQ_CST );
++        if (!bo_poke( addr, 0xcc ))
++        {
++            bp->addr = 0;
++            ERR_(seh)( "cannot write the breakpoint at %08x\n", (unsigned)addr );
++        }
++        else TRACE_(seh)( "armed %08x, trampoline %p\n", (unsigned)addr, bp->tramp );
++        if (!bp->tramp) FIXME_(seh)( "instruction at %08x cannot be stepped over\n", (unsigned)addr );
++    }
++    else ERR_(seh)( "too many breakpoints, %08x not armed\n", (unsigned)addr );
++    pthread_mutex_unlock( &bo_bp_mutex );
++}
++
++static void bo_bp_disarm( ULONG addr )
++{
++    struct bo_bp *bp;
++
++    pthread_mutex_lock( &bo_bp_mutex );
++    if ((bp = bo_bp_find( addr )) && !--bp->refs)
++    {
++        bo_poke( addr, bp->orig );
++        bp->hidden = 0;
++        __atomic_store_n( &bp->addr, 0, __ATOMIC_SEQ_CST );
++        TRACE_(seh)( "disarmed %08x\n", (unsigned)addr );
++    }
++    pthread_mutex_unlock( &bo_bp_mutex );
++}
++
++/* Breakpoints whose original byte was put back for a handler: write the int3
++ * again once the thread resumes (the hardware would trap again too). */
++static void bo_bp_rearm_hidden(void)
++{
++    int i;
++
++    for (i = 0; i < BO_BP_MAX; i++)
++    {
++        struct bo_bp *bp = &bo_bps[i];
++        if (!bp->addr || !bp->hidden) continue;
++        pthread_mutex_lock( &bo_bp_mutex );
++        if (bp->addr && bp->hidden && bp->refs > 0 && bo_poke( bp->addr, 0xcc ))
++        {
++            bp->hidden = 0;
++            if (bo_drlog > 0) fprintf( stderr, "[drlog] rearm %08x thread %04x\n", (unsigned)bp->addr, (unsigned)GetCurrentThreadId() );
++        }
++        pthread_mutex_unlock( &bo_bp_mutex );
++    }
++}
++
++/* The address of debug register i if DR7 enables it as an execution breakpoint. */
++static ULONG bo_exec_bp( DWORD_PTR dr7, DWORD_PTR addr, int i )
++{
++    if (!(dr7 & (3 << (2 * i)))) return 0;
++    if ((dr7 >> (16 + 4 * i)) & 3)
++    {
++        static int warned;
++        if (!warned++) FIXME_(seh)( "data breakpoints are not emulated (dr7 %08lx)\n", (unsigned long)dr7 );
++        return 0;
++    }
++    return addr;
++}
++
++/* The current thread sets its own debug registers: arm what it enables,
++ * disarm what it no longer does. Called before the cached registers change. */
++static void bo_bp_update_self( const I386_CONTEXT *context )
++{
++    const DWORD_PTR old_dr[4] = { amd64_thread_data()->dr0, amd64_thread_data()->dr1,
++                                  amd64_thread_data()->dr2, amd64_thread_data()->dr3 };
++    const DWORD new_dr[4] = { context->Dr0, context->Dr1, context->Dr2, context->Dr3 };
++    DWORD_PTR old_dr7 = amd64_thread_data()->dr7;
++    int i;
++
++    if (!((context->ContextFlags & ~CONTEXT_i386) & CONTEXT_I386_DEBUG_REGISTERS)) return;
++    for (i = 0; i < 4; i++)
++    {
++        ULONG old_bp = bo_exec_bp( old_dr7, old_dr[i], i );
++        ULONG new_bp = bo_exec_bp( context->Dr7, new_dr[i], i );
++        if (old_bp == new_bp) continue;
++        if (old_bp) bo_bp_disarm( old_bp );
++        if (new_bp) bo_bp_arm( new_bp );
++    }
++}
++
++/* Resuming at an armed address with RF set runs the original instruction. */
++static BOOL bo_bp_resume_fixup( const I386_CONTEXT *context, I386_CONTEXT *copy )
++{
++    struct bo_bp *bp;
++
++    if (!(context->EFlags & BO_EFLAGS_RF) || !context->Eip) return FALSE;
++    if (!(bp = bo_bp_find( context->Eip )) || !bp->tramp) return FALSE;
++    *copy = *context;
++    copy->Eip = PtrToUlong( bp->tramp );
++    copy->EFlags &= ~BO_EFLAGS_RF;
++    return TRUE;
++}
++
++/* An int3 trapped in 32-bit code: one of ours? */
++static BOOL bo_bp_trap( ucontext_t *ucontext )
++{
++    EXCEPTION_RECORD rec = { 0 };
++    struct xcontext context;
++    const DWORD_PTR dr[4] = { amd64_thread_data()->dr0, amd64_thread_data()->dr1,
++                              amd64_thread_data()->dr2, amd64_thread_data()->dr3 };
++    struct bo_bp *bp;
++    ULONG addr;
++    int i;
++
++    if (!bo_bp_active || CS_sig(ucontext) == cs64_sel) return FALSE;
++    addr = (ULONG)RIP_sig(ucontext) - 1;
++    if (!(bp = bo_bp_find( addr )))
++    {
++        if (bo_drlog > 0)
++        {
++            const BYTE *c = ULongToPtr( addr - 400 );
++            int k;
++            fprintf( stderr, "[drlog] foreign int3 at %08x eax=%08x ebx=%08x ecx=%08x edx=%08x esi=%08x edi=%08x esp=%08x ebp=%08x code:",
++                     (unsigned)addr, (unsigned)RAX_sig(ucontext), (unsigned)RBX_sig(ucontext), (unsigned)RCX_sig(ucontext),
++                     (unsigned)RDX_sig(ucontext), (unsigned)RSI_sig(ucontext), (unsigned)RDI_sig(ucontext),
++                     (unsigned)RSP_sig(ucontext), (unsigned)RBP_sig(ucontext) );
++            for (k = 0; k < 420; k++) fprintf( stderr, " %02x", c[k] );
++            fprintf( stderr, "\n[drlog] stack:" );
++            for (k = 0; k < 16; k++) fprintf( stderr, " %08x", ((const ULONG *)(ULONG_PTR)RSP_sig(ucontext))[k] );
++            fprintf( stderr, "\n" );
++        }
++        return FALSE;
++    }
++
++    for (i = 0; i < 4; i++)
++    {
++        if (bo_exec_bp( amd64_thread_data()->dr7, dr[i], i ) != addr) continue;
++        /* this thread's breakpoint: report it as the hardware would */
++        RIP_sig(ucontext) = addr;
++        amd64_thread_data()->dr6 = 0xffff0ff0 | (1 << i);
++        bo_bp_saved_dr[0] = amd64_thread_data()->dr0;
++        bo_bp_saved_dr[1] = amd64_thread_data()->dr1;
++        bo_bp_saved_dr[2] = amd64_thread_data()->dr2;
++        bo_bp_saved_dr[3] = amd64_thread_data()->dr3;
++        bo_bp_saved_dr[4] = amd64_thread_data()->dr6;
++        bo_bp_saved_dr[5] = amd64_thread_data()->dr7;
++        /* A hardware breakpoint leaves the code as it is, and handlers read
++         * it (Plutonium checks the instruction it stopped on): put the
++         * original byte back until the thread resumes. */
++        if (bo_poke( addr, bp->orig )) bp->hidden = 1;
++        {
++            static int stats = -1;
++            if (stats < 0) { const char *e = getenv( "BO_STATS" ); stats = e && *e == '1'; }
++            if (stats)
++            {
++                struct timespec ts;
++                clock_gettime( CLOCK_MONOTONIC, &ts );
++                fprintf( stderr, "[stat] %ld.%03ld bp-hit %08x thread %04x\n", (long)ts.tv_sec, ts.tv_nsec / 1000000,
++                         (unsigned)addr, (unsigned)GetCurrentThreadId() );
++            }
++        }
++        if (bo_drlog > 0)
++            fprintf( stderr, "[drlog] hit %08x dr%d thread %04x: restored=%d byte now %02x %02x (orig %02x)\n",
++                     (unsigned)addr, i, (unsigned)GetCurrentThreadId(), (int)bp->hidden,
++                     ((volatile BYTE *)ULongToPtr( addr ))[0], ((volatile BYTE *)ULongToPtr( addr ))[1], bp->orig );
++        rec.ExceptionCode = EXCEPTION_SINGLE_STEP;
++        rec.ExceptionAddress = ULongToPtr( addr );
++        save_context( &context, ucontext );
++        bo_bp_raising = TRUE;
++        bo_bp_dispatching = TRUE;
++        setup_raise_exception( ucontext, &rec, &context );
++        bo_bp_raising = FALSE;
++        return TRUE;
++    }
++    /* another thread's breakpoint: go on as if it were not there */
++    if (!bp->tramp) return FALSE;
++    RIP_sig(ucontext) = PtrToUlong( bp->tramp );
++    return TRUE;
+ }
+ 
+ 
+@@ -2598,6 +3107,7 @@
+     struct xcontext context;
+ 
+     if (handle_syscall_trap( ucontext, siginfo )) return;
++    if (TRAP_sig(ucontext) == TRAP_x86_BPTFLT && bo_bp_trap( ucontext )) return;
+ 
+     rec.ExceptionAddress = (void *)RIP_sig(ucontext);
+     save_context( &context, ucontext );
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -683,6 +683,9 @@
+         replace_wineloader_path_with_link( &(argv[1]), image_path );
+ #endif
+ 
++#ifdef __APPLE__
++    x87_sidecar_exec( argv, image_path );  /* returns when not used */
++#endif
+     execv( argv[1], argv + 1 );
+ }
+ 
+@@ -2386,6 +2389,7 @@
+ #ifdef __APPLE__
+ static void *apple_wine_thread( void *arg )
+ {
++    macos_set_thread_qos();
+     start_main_thread();
+     return NULL;
+ }
+@@ -2612,6 +2616,9 @@
+  */
+ DECLSPEC_EXPORT void __wine_main( int argc, char *argv[] )
+ {
++#ifdef __APPLE__
++    x87_sidecar_handshake();  /* started by x87sidecar: let it hook Rosetta first */
++#endif
+     main_argc = argc;
+     main_argv = argv;
+ 
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -214,6 +214,11 @@
+                                   const RTL_USER_PROCESS_PARAMETERS *params,
+                                   const struct pe_image_info *pe_info, DWORD *info_size );
+ extern char *get_alternate_wineloader( WORD machine );
++#ifdef __APPLE__
++extern void x87_sidecar_exec( char **argv, const char *image_path );
++extern void x87_sidecar_handshake(void);
++extern void macos_set_thread_qos(void);
++#endif
+ extern NTSTATUS exec_wineloader( char **argv, int socketfd, const struct pe_image_info *pe_info, const char *image_path );
+ extern NTSTATUS load_builtin( const struct pe_image_info *image_info, UNICODE_STRING *nt_name,
+                               ANSI_STRING *exp_name, USHORT machine, SECTION_IMAGE_INFORMATION *info,
+@@ -310,6 +315,8 @@
+ extern SIZE_T virtual_uninterrupted_read_memory( const void *addr, void *buffer, SIZE_T size );
+ extern NTSTATUS virtual_uninterrupted_write_memory( void *addr, const void *buffer, SIZE_T size );
+ extern void virtual_set_force_exec( BOOL enable );
++extern void virtual_set_exec_on_demand( BOOL enable );
++extern BOOL virtual_exec_on_demand( void *addr );
+ extern void virtual_enable_write_exceptions( BOOL enable );
+ extern void virtual_set_large_address_space(void);
+ extern void virtual_fill_image_information( const struct pe_image_info *pe_info,
+--- a/dlls/ntdll/unix/process.c
++++ b/dlls/ntdll/unix/process.c
+@@ -2273,6 +2273,19 @@
+                 return STATUS_INVALID_PARAMETER;
+             }
+             execute_flags = *(ULONG *)info;
++#ifdef __APPLE__
++            {
++                /* bo: under Rosetta, make pages executable when code runs from
++                 * them instead of all at once (BO_EXEC_ON_DEMAND=0: all at once) */
++                const char *env = getenv( "BO_EXEC_ON_DEMAND" );
++                if (enable && is_wow64() && (!env || *env != '0'))
++                {
++                    virtual_set_exec_on_demand( TRUE );
++                    break;
++                }
++                virtual_set_exec_on_demand( FALSE );
++            }
++#endif
+             virtual_set_force_exec( enable );
+         }
+         break;
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -4979,6 +4979,56 @@
+         }
+     }
+     server_leave_uninterrupted_section( &virtual_mutex, &sigset );
++}
++
++
++/***********************************************************************
++ *           virtual_set_exec_on_demand
++ *
++ * bo: with DEP turned off, Wine maps every readable page executable. Under
++ * Rosetta that makes all writable data look like code: each write may have to
++ * throw translations away, and an old 32-bit game whose launcher turns DEP
++ * off ran in slow motion. In this mode readable pages keep their protection,
++ * and a page becomes executable the first time code runs from it
++ * (virtual_exec_on_demand), which is what the program sees with DEP off.
++ */
++static BOOL exec_on_demand;
++
++void virtual_set_exec_on_demand( BOOL enable )
++{
++    exec_on_demand = enable;
++}
++
++/* An instruction fetch faulted at addr: make its page executable when that is
++ * what the program asked for by turning DEP off. Called from the signal handler. */
++BOOL virtual_exec_on_demand( void *addr )
++{
++    char *page = ROUND_ADDR( addr, host_page_mask );
++    BOOL ret = FALSE;
++    BYTE vprot;
++
++    if (!exec_on_demand) return FALSE;
++    mutex_lock( &virtual_mutex );  /* no need for signal masking inside signal handler */
++    vprot = get_host_page_vprot( page );
++    if ((vprot & VPROT_COMMITTED) && (vprot & VPROT_READ) && !(vprot & (VPROT_EXEC | VPROT_GUARD)))
++    {
++        set_page_vprot_bits( page, host_page_size, VPROT_EXEC, 0 );
++        mprotect_range( page, host_page_size, 0, 0 );
++        ret = TRUE;
++    }
++    mutex_unlock( &virtual_mutex );
++    if (ret)
++    {
++        static int stats = -1;
++        if (stats < 0) { const char *e = getenv( "BO_STATS" ); stats = e && *e == '1'; }
++        if (stats)
++        {
++            struct timespec ts;
++            clock_gettime( CLOCK_MONOTONIC, &ts );
++            fprintf( stderr, "[stat] %ld.%03ld exec-on-demand %p\n", (long)ts.tv_sec, ts.tv_nsec / 1000000, page );
++        }
++    }
++    return ret;
+ }
+ 
+ 
+--- a/dlls/ntdll/unix/thread.c
++++ b/dlls/ntdll/unix/thread.c
+@@ -1128,11 +1128,28 @@
+  *
+  * Startup routine for a newly created thread.
+  */
++#ifdef __APPLE__
++#include <pthread/qos.h>
++/* bo: macOS schedules a thread by its quality of service. Wine's threads get
++ * the default one, so a game's threads could be moved to the efficiency cores
++ * or behind other work, which showed as stutter. Give them the highest
++ * (BO_QOS=0 leaves the default). */
++void macos_set_thread_qos(void)
++{
++    static int enabled = -1;
++    if (enabled < 0) { const char *e = getenv( "BO_QOS" ); enabled = !e || *e != '0'; }
++    if (enabled) pthread_set_qos_class_self_np( QOS_CLASS_USER_INTERACTIVE, 0 );
++}
++#endif
++
+ static void start_thread( TEB *teb )
+ {
+     struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
+     BOOL suspend;
+ 
++#ifdef __APPLE__
++    macos_set_thread_qos();
++#endif
+     thread_data->syscall_table = KeServiceDescriptorTable;
+     thread_data->syscall_trace = TRACE_ON(syscall);
+     thread_data->pthread_id = pthread_self();
+--- a/dlls/ntdll/Makefile.in
++++ b/dlls/ntdll/Makefile.in
+@@ -68,6 +68,7 @@
+ 	unix/tape.c \
+ 	unix/thread.c \
+ 	unix/virtual.c \
++	unix/x87sidecar.c \
+ 	unwind.c \
+ 	version.c \
+ 	version.rc \
+--- /dev/null
++++ b/dlls/ntdll/unix/x87sidecar.c
+@@ -0,0 +1,182 @@
++/*
++ * x87 acceleration under Rosetta through x87sidecar
++ *
++ * x87sidecar (https://github.com/athei/x87sidecar, MIT, by athei, which grew
++ * out of Lifeisawful's rosettax87 and rosettax87_jit) hooks Rosetta's
++ * translator and turns runs of x87 instructions into native ARM64 code.
++ * Rosetta translates x87 slowly, and older 32-bit games do their physics and
++ * effects in it.
++ *
++ * Wine's side of its cooperative mode:
++ *  - x87_sidecar_exec: a new process whose program is named in
++ *    X87_SIDECAR_PROGRAMS (file names separated by ':', any case) is started
++ *    as `x87sidecar --cooperative <loader> <args>`, with x87sidecar at
++ *    X87_SIDECAR_PATH. The sidecar starts the loader with the name of a
++ *    Mach service in X87_SIDECAR_BOOTSTRAP.
++ *  - x87_sidecar_handshake: in that process, before any Windows code runs,
++ *    hand the task and thread ports to that service and wait for the reply
++ *    (the protocol of x87sidecar's rosetta_loader/src/coop_proto.h), then
++ *    invalidate the instruction cache for the code ranges the reply names.
++ * Without the variables, or when anything fails, the program runs as usual.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ */
++
++#if 0
++#pragma makedep unix
++#endif
++
++#ifdef __APPLE__
++
++#include <libkern/OSCacheControl.h>
++#include <mach/mach.h>
++#include <mach/notify.h>
++#include <servers/bootstrap.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <strings.h>
++#include <unistd.h>
++
++/* coop_proto.h of x87sidecar 1.9.1 */
++#define X87_COOP_ENV     "X87_SIDECAR_BOOTSTRAP"
++#define X87_COOP_MSGH_ID 0x78383721  /* 'x87!'; the reply uses +1 */
++
++typedef struct
++{
++    mach_msg_header_t header;
++    mach_msg_body_t body;
++    mach_msg_port_descriptor_t task_port;
++    mach_msg_port_descriptor_t thread_port;
++} x87_coop_request_t;
++
++typedef struct
++{
++    mach_msg_header_t header;
++    uint64_t icache_addr[2];
++    uint64_t icache_len[2];
++} x87_coop_reply_t;
++
++static int x87_logs(void)
++{
++    return getenv( "X87_LOGS" ) != NULL;
++}
++
++/* Whether the program at image_path is named in X87_SIDECAR_PROGRAMS. */
++static int x87_wanted( const char *image_path )
++{
++    const char *list = getenv( "X87_SIDECAR_PROGRAMS" ), *name, *p, *end;
++    size_t len;
++
++    if (!list || !*list || !image_path) return 0;
++    name = image_path;
++    for (p = image_path; *p; p++) if (*p == '/' || *p == '\\') name = p + 1;
++    len = strlen( name );
++    for (p = list; *p; p = *end ? end + 1 : end)
++    {
++        if (!(end = strchr( p, ':' ))) end = p + strlen( p );
++        if ((size_t)(end - p) == len && !strncasecmp( p, name, len )) return 1;
++    }
++    return 0;
++}
++
++/* argv[1] is the loader to exec, argv + 1 its arguments. Returns only when
++ * the program is not to be accelerated or the sidecar cannot be started. */
++void x87_sidecar_exec( char **argv, const char *image_path )
++{
++    const char *sidecar = getenv( "X87_SIDECAR_PATH" );
++    char **args;
++    int count = 0;
++
++    if (!sidecar || !*sidecar || !x87_wanted( image_path )) return;
++    /* Wine tries a loader of the program's own architecture first and falls
++     * back to its own when that one does not exist: only hand over a loader
++     * that is there */
++    if (!argv[1] || access( argv[1], X_OK )) return;
++    while (argv[1 + count]) count++;
++    if (!(args = malloc( (count + 3) * sizeof(*args) ))) return;
++    args[0] = (char *)sidecar;
++    args[1] = (char *)"--cooperative";
++    memcpy( args + 2, argv + 1, (count + 1) * sizeof(*args) );
++    if (x87_logs()) fprintf( stderr, "x87: starting %s under %s\n", image_path, sidecar );
++    execv( sidecar, args );
++    if (x87_logs()) fprintf( stderr, "x87: cannot start %s\n", sidecar );
++    free( args );
++}
++
++/* In a process started by the sidecar: hand it our task and thread ports. */
++void x87_sidecar_handshake(void)
++{
++    const char *name = getenv( X87_COOP_ENV ), *dot;
++    mach_port_t bootstrap = MACH_PORT_NULL, service = MACH_PORT_NULL, reply = MACH_PORT_NULL;
++    x87_coop_request_t msg;
++    struct
++    {
++        x87_coop_reply_t reply;
++        mach_msg_trailer_t trailer;
++        char slack[64];
++    } rep;
++    kern_return_t kr;
++    int i;
++
++    if (x87_logs()) fprintf( stderr, "x87: handshake check in pid %d, %s=%s\n", (int)getpid(), X87_COOP_ENV, name ? name : "(unset)" );
++    if (!name || !*name) return;
++    /* the name ends with the pid of the process it is meant for; a child that
++     * only inherited the variable must not answer */
++    if (!(dot = strrchr( name, '.' )) || atoi( dot + 1 ) != (int)getpid()) goto done;
++
++    if (task_get_bootstrap_port( mach_task_self(), &bootstrap ) != KERN_SUCCESS) goto done;
++    if ((kr = bootstrap_look_up( bootstrap, name, &service )) != KERN_SUCCESS)
++    {
++        if (x87_logs()) fprintf( stderr, "x87: bootstrap_look_up(%s) failed %#x\n", name, kr );
++        goto done;
++    }
++    if (mach_port_allocate( mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &reply ) != KERN_SUCCESS) goto done;
++
++    memset( &msg, 0, sizeof(msg) );
++    msg.header.msgh_bits = MACH_MSGH_BITS( MACH_MSG_TYPE_COPY_SEND, MACH_MSG_TYPE_MAKE_SEND_ONCE ) |
++                           MACH_MSGH_BITS_COMPLEX;
++    msg.header.msgh_size = sizeof(msg);
++    msg.header.msgh_remote_port = service;
++    msg.header.msgh_local_port = reply;
++    msg.header.msgh_id = X87_COOP_MSGH_ID;
++    msg.body.msgh_descriptor_count = 2;
++    msg.task_port.name = mach_task_self();
++    msg.task_port.disposition = MACH_MSG_TYPE_COPY_SEND;
++    msg.task_port.type = MACH_MSG_PORT_DESCRIPTOR;
++    msg.thread_port.name = mach_thread_self();
++    msg.thread_port.disposition = MACH_MSG_TYPE_COPY_SEND;
++    msg.thread_port.type = MACH_MSG_PORT_DESCRIPTOR;
++    if ((kr = mach_msg( &msg.header, MACH_SEND_MSG, sizeof(msg), 0, MACH_PORT_NULL,
++                        MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL )) != KERN_SUCCESS)
++    {
++        if (x87_logs()) fprintf( stderr, "x87: handshake send failed %#x\n", kr );
++        goto done;
++    }
++
++    /* the sidecar replies once its hook is in place; anything else (such as
++     * the send-once notification of a sidecar that exited) means no hook */
++    memset( &rep, 0, sizeof(rep) );
++    kr = mach_msg( &rep.reply.header, MACH_RCV_MSG, 0, sizeof(rep), reply, 30000, MACH_PORT_NULL );
++    if (kr == KERN_SUCCESS && rep.reply.header.msgh_id == X87_COOP_MSGH_ID + 1 &&
++        rep.reply.header.msgh_size == sizeof(x87_coop_reply_t))
++    {
++        /* the patched code was already hot in this process's instruction
++         * cache: invalidate it from here, as the protocol requires */
++        for (i = 0; i < 2; i++)
++            if (rep.reply.icache_len[i])
++                sys_icache_invalidate( (void *)(uintptr_t)rep.reply.icache_addr[i],
++                                       (size_t)rep.reply.icache_len[i] );
++        if (x87_logs()) fprintf( stderr, "x87: acceleration on\n" );
++    }
++    else fprintf( stderr, "x87: no reply from the sidecar (%#x), running without x87 acceleration\n", kr );
++
++done:
++    unsetenv( X87_COOP_ENV );
++}
++
++#endif /* __APPLE__ */

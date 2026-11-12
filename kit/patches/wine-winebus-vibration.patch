@@ -1,0 +1,61 @@
+--- dlls/winebus.sys/main.c	2026-11-12 14:08:32
++++ dlls/winebus.sys/main.c	2026-11-12 14:08:44
+@@ -81,6 +81,11 @@
+     DEVICE_OBJECT *device;
+ 
+     CRITICAL_SECTION cs;
++    /* Held while an output report (controller vibration) is written, instead
++     * of cs: the write is a synchronous round trip to the device, and holding
++     * cs for it held back every input report meanwhile (input lag whenever a
++     * game rumbles the controller). */
++    CRITICAL_SECTION write_cs;
+     enum device_state state;
+ 
+     struct device_desc desc;
+@@ -407,6 +412,8 @@
+ 
+     InitializeCriticalSectionEx(&ext->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
+     ext->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
++    InitializeCriticalSectionEx(&ext->write_cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
++    ext->write_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": write_cs");
+ 
+     /* Overcooked! All You Can Eat only adds controllers with unique serial numbers
+      * Prefer keeping serial numbers unique over keeping them consistent across runs */
+@@ -1401,13 +1408,22 @@
+             break;
+ 
+         case IRP_MN_REMOVE_DEVICE:
++            RtlEnterCriticalSection(&ext->cs);
++            ext->state = DEVICE_STATE_REMOVED;
++            RtlLeaveCriticalSection(&ext->cs);
+             remove_pending_irps(device);
++
++            /* let an output report being written finish first */
++            RtlEnterCriticalSection(&ext->write_cs);
++            RtlLeaveCriticalSection(&ext->write_cs);
+ 
+             bus_unlink_hid_device(device);
+             unix_device_remove(device);
+ 
+             ext->cs.DebugInfo->Spare[0] = 0;
+             DeleteCriticalSection(&ext->cs);
++            ext->write_cs.DebugInfo->Spare[0] = 0;
++            DeleteCriticalSection(&ext->write_cs);
+ 
+             irp->IoStatus.Status = STATUS_SUCCESS;
+             IoCompleteRequest(irp, IO_NO_INCREMENT);
+@@ -1630,7 +1646,13 @@
+                     TRACE("%s\n", buffer);
+                 }
+             }
+-            unix_device_set_output_report(device, packet, &irp->IoStatus);
++            /* Written without cs (see write_cs): input reports keep flowing. */
++            RtlLeaveCriticalSection(&ext->cs);
++            RtlEnterCriticalSection(&ext->write_cs);
++            if (ext->state == DEVICE_STATE_REMOVED) irp->IoStatus.Status = STATUS_DELETE_PENDING;
++            else unix_device_set_output_report(device, packet, &irp->IoStatus);
++            RtlLeaveCriticalSection(&ext->write_cs);
++            RtlEnterCriticalSection(&ext->cs);
+             if (!irp->IoStatus.Status) hidraw_disable_report_fixups(device);
+             break;
+         }

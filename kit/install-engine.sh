@@ -1,0 +1,152 @@
+#!/bin/bash
+# Black Ops Mac engine: assemble the Wine engine the games run on.
+#
+#   install-engine.sh [--update-x87]
+#
+# The base is the runtime of CodeWeavers' CrossOver 26.3, copied from the
+# installed CrossOver.app (the app itself is never modified). Over it go:
+#  - our ntdll.so (patches/wine-ntdll.patch): emulated execution breakpoints
+#    under Rosetta (what Plutonium needs to start), execute-on-demand when a
+#    program turns DEP off, and the x87sidecar handshake;
+#  - our DXVK d3d9.dll (patches/dxvk-d3d9.patch) for Black Ops 1;
+#  - DXMT (Direct3D 11 -> Metal) with background pipeline compilation, for
+#    Black Ops II;
+#  - our xinput1_3.dll: controller vibration without input delay;
+#  - Khronos' MoltenVK 1.4.2 behind our persistent shader cache (mvkcache);
+#  - athei's x87sidecar, its latest release (fast x87 maths under Rosetta);
+#  - Wine's loader declared a game, so macOS turns Game Mode on.
+#
+# Environment: BOM_HOME (default: ~/Library/Application Support/Black Ops Mac),
+# CROSSOVER_APP (default: /Applications/CrossOver.app).
+# Progress lines start with "==> "; errors with "ERROR: ".
+set -euo pipefail
+kit=$(cd -- "$(dirname -- "$0")" && pwd)
+home=${BOM_HOME:-"$HOME/Library/Application Support/Black Ops Mac"}
+cx_app=${CROSSOVER_APP:-/Applications/CrossOver.app}
+engine="$home/engine"
+downloads="$home/downloads"
+cx_version_wanted=26.3
+moltenvk_url=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
+moltenvk_sha=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
+x87_fallback_tag=v1.9.1
+x87_fallback_sha=e18d1c2443f1440ae5a8e137dd0c85ec33e53506b67604675826094122106615
+
+step() { printf '==> %s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+fetch() { # url file sha256
+  if [ ! -f "$2" ] || [ "$(sha "$2")" != "$3" ]; then
+    curl -fsSL --retry 3 -o "$2.part" "$1" || die "cannot download $1"
+    mv -f "$2.part" "$2"
+  fi
+  [ "$(sha "$2")" = "$3" ] || die "$(basename "$2"): SHA-256 does not match"
+}
+
+x87_install() { # into $1/bin: athei's latest x87sidecar release, else the pinned one
+  local dest=$1 tag sha url tmp json
+  json=$(curl -fsSL https://api.github.com/repos/athei/x87sidecar/releases/latest 2>/dev/null || true)
+  tag=$(printf '%s' "$json" | /usr/bin/python3 -I -c 'import json,sys
+try: print(json.load(sys.stdin)["tag_name"])
+except Exception: pass' 2>/dev/null)
+  sha=$(printf '%s' "$json" | /usr/bin/python3 -I -c 'import json,sys
+try:
+    r = json.load(sys.stdin)
+    print(next(a["digest"].split(":")[1] for a in r["assets"] if a["name"] == "x87sidecar.tar.xz"))
+except Exception: pass' 2>/dev/null)
+  if [ -z "$tag" ] || [ -z "$sha" ]; then tag=$x87_fallback_tag sha=$x87_fallback_sha; fi
+  url="https://github.com/athei/x87sidecar/releases/download/$tag/x87sidecar.tar.xz"
+  fetch "$url" "$downloads/x87sidecar-$tag.tar.xz" "$sha"
+  tmp=$(mktemp -d)
+  tar -xJf "$downloads/x87sidecar-$tag.tar.xz" -C "$tmp"
+  xattr -d com.apple.quarantine "$tmp/x87sidecar" 2>/dev/null || true
+  if ! "$tmp/x87sidecar" --probe > /dev/null 2>&1; then
+    echo "note: x87sidecar $tag does not support this Rosetta; the games will run without x87 acceleration" >&2
+  fi
+  mkdir -p "$dest/bin"
+  mv -f "$tmp/x87sidecar" "$dest/bin/x87sidecar"
+  rm -rf "$tmp"
+  echo "$tag" > "$dest/x87sidecar.version"
+  step "x87sidecar $tag installed"
+}
+
+# --- Only the x87 accelerator ------------------------------------------------
+if [ "${1:-}" = --update-x87 ]; then
+  [ -d "$engine/lib/wine" ] || die "the engine is not installed yet"
+  mkdir -p "$downloads"
+  x87_install "$engine"
+  exit 0
+fi
+
+# --- Checks ------------------------------------------------------------------
+step "Checking this Mac"
+[ "$(uname -m)" = arm64 ] || die "Black Ops Mac is for Apple Silicon Macs"
+/usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null ||
+  die "Rosetta 2 is missing. Install it with: softwareupdate --install-rosetta --agree-to-license"
+[ -d "$cx_app/Contents/SharedSupport/CrossOver/lib/wine" ] ||
+  die "CrossOver is not installed in /Applications (its free trial is enough: codeweavers.com)"
+cx_version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$cx_app/Contents/Info.plist" 2>/dev/null || echo "?")
+case "$cx_version" in
+  "$cx_version_wanted"|"$cx_version_wanted".*) ;;
+  *) die "CrossOver $cx_version is installed; this engine is built for CrossOver $cx_version_wanted" ;;
+esac
+
+mkdir -p "$home" "$downloads"
+new="$engine.new"
+rm -rf "$new"
+
+# --- Base runtime --------------------------------------------------------------
+step "Copying CrossOver $cx_version's runtime"
+cp -cR "$cx_app/Contents/SharedSupport/CrossOver" "$new" 2>/dev/null || cp -R "$cx_app/Contents/SharedSupport/CrossOver" "$new"
+L="$new/lib/wine"
+
+# --- Our modules ---------------------------------------------------------------
+step "Installing the Black Ops Mac modules"
+cp "$kit/payload/x86_64-unix/ntdll.so" "$L/x86_64-unix/ntdll.so"
+codesign -fs - "$L/x86_64-unix/ntdll.so" 2>/dev/null
+cp "$kit/payload/i386-windows/d3d9.dll" "$L/i386-windows/d3d9.dll"
+# xinput: ours and CrossOver's side by side, launch.sh picks one (RUMBLE_FIX)
+cp "$L/i386-windows/xinput1_3.dll" "$L/i386-windows/xinput1_3.cx.dll"
+cp "$kit/payload/i386-windows/xinput1_3.dll" "$L/i386-windows/xinput1_3.bom.dll"
+cp "$kit/payload/i386-windows/xinput1_3.dll" "$L/i386-windows/xinput1_3.dll"
+# winebus.sys: vibration written without holding back the controller's input
+cp "$L/x86_64-windows/winebus.sys" "$L/x86_64-windows/winebus.cx.sys"
+cp "$kit/payload/x86_64-windows/winebus.sys" "$L/x86_64-windows/winebus.bom.sys"
+cp "$kit/payload/x86_64-windows/winebus.sys" "$L/x86_64-windows/winebus.sys"
+for a in i386-windows x86_64-windows; do
+  for d in d3d11 dxgi d3d10core winemetal; do
+    cp "$kit/payload/dxmt/$a/$d.dll" "$L/$a/$d.dll"
+  done
+done
+cp "$kit/payload/dxmt/x86_64-unix/winemetal.so" "$L/x86_64-unix/winemetal.so"
+codesign -fs - "$L/x86_64-unix/winemetal.so" 2>/dev/null
+
+step "Installing MoltenVK 1.4.2 with the shader cache"
+fetch "$moltenvk_url" "$downloads/MoltenVK-macos-1.4.2.tar" "$moltenvk_sha"
+tmp=$(mktemp -d)
+tar -xf "$downloads/MoltenVK-macos-1.4.2.tar" -C "$tmp" MoltenVK/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib
+cp "$tmp/MoltenVK/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib" "$new/lib64/libMoltenVK.real.dylib"
+rm -rf "$tmp"
+install_name_tool -id @rpath/libMoltenVK.real.dylib "$new/lib64/libMoltenVK.real.dylib" 2>/dev/null
+codesign -fs - "$new/lib64/libMoltenVK.real.dylib" 2>/dev/null
+cp "$kit/payload/lib64/libMoltenVK.dylib" "$new/lib64/libMoltenVK.dylib"
+codesign -fs - "$new/lib64/libMoltenVK.dylib" 2>/dev/null
+
+step "Installing the x87 accelerator"
+x87_install "$new"
+
+step "Declaring Wine a game (macOS Game Mode)"
+/usr/bin/python3 -I "$kit/tools/gamemode-plist.py" "$L/x86_64-unix/wine" > /dev/null &&
+  codesign -fs - "$L/x86_64-unix/wine" 2>/dev/null
+
+# keep the shader cache of the previous engine
+for c in "$engine"/lib64/mvkcache.bin.*; do [ -f "$c" ] && cp -p "$c" "$new/lib64/"; done
+cat > "$new/black-ops-mac.version" <<EOF
+crossover=$cx_version
+kit=$(cat "$kit/VERSION" 2>/dev/null || echo dev)
+x87sidecar=$(cat "$new/x87sidecar.version")
+EOF
+rm -rf "$engine.old"
+[ -d "$engine" ] && mv "$engine" "$engine.old"
+mv "$new" "$engine"
+rm -rf "$engine.old"
+step "Engine ready in $engine"

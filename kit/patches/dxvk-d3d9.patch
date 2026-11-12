@@ -1,0 +1,734 @@
+--- a/meson.build
++++ b/meson.build
+@@ -108,7 +108,7 @@
+ endif
+ 
+ dxvk_version = vcs_tag(
+-  command: ['git', 'describe', '--dirty=+'],
++  command: ['git', 'describe', '--dirty=-async'],
+   input:  'version.h.in',
+   output: 'version.h',
+ )
+--- a/src/d3d9/d3d9_device.cpp
++++ b/src/d3d9/d3d9_device.cpp
+@@ -59,6 +59,27 @@
+     if (canSWVP)
+       Logger::info("D3D9DeviceEx: Using extended constant set for software vertex processing.");
+ 
++    // Black Ops (t5sp.exe) draws every material once in a single frame to
++    // warm its shaders. Those draws are never shown, so while the game's
++    // warming flag is set, missing pipelines compile in the background
++    // (DXVK_ASYNC) instead of one by one. Identified by its own string.
++#ifndef _WIN64
++    if (env::getEnvVar("DXVK_WARM_ASYNC") != "0") {
++      const char* tag = reinterpret_cast<const char*>(0xa457f4);
++      const uint32_t* flag = reinterpret_cast<const uint32_t*>(0x396a188);
++      MEMORY_BASIC_INFORMATION mi = { };
++      auto readable = [&mi] (const void* p, size_t n) {
++        return VirtualQuery(p, &mi, sizeof(mi)) == sizeof(mi) && mi.State == MEM_COMMIT
++            && !(mi.Protect & (PAGE_NOACCESS | PAGE_GUARD))
++            && uintptr_t(p) + n <= uintptr_t(mi.BaseAddress) + mi.RegionSize;
++      };
++      if (readable(tag, 21) && !std::memcmp(tag, "PATCH_SHADER_WARMING", 21) && readable(flag, 4)) {
++        m_warmFlag = flag;
++        Logger::info("D3D9DeviceEx: Black Ops shader warming compiles in the background");
++      }
++    }
++#endif
++
+     if (m_dxvkDevice->instance()->extensions().extDebugUtils)
+       m_annotation = new D3D9UserDefinedAnnotation(this);
+ 
+@@ -2604,6 +2625,13 @@
+           IDirect3DVertexBuffer9*      pDestBuffer,
+           IDirect3DVertexDeclaration9* pVertexDecl,
+           DWORD                        Flags) {
++    if (!m_dxvkDevice->features().core.features.geometryShader) {
++      static bool s_warned = false;
++      if (!std::exchange(s_warned, true))
++        Logger::warn("D3D9DeviceEx::ProcessVertices: needs geometry shaders, which this device lacks; ignored");
++      return D3D_OK;
++    }
++
+     D3D9DeviceLock lock = LockDevice();
+ 
+     if (unlikely(pDestBuffer == nullptr || pVertexDecl == nullptr))
+@@ -3915,7 +3943,9 @@
+     DxvkDeviceFeatures enabled = {};
+ 
+     // Geometry shaders are used for some meta ops
+-    enabled.core.features.geometryShader = VK_TRUE;
++    // Metal has no geometry shaders, and MoltenVK reports none: D3D9 only
++    // needs them for ProcessVertices, which then does nothing (see there).
++    enabled.core.features.geometryShader = supported.core.features.geometryShader;
+     enabled.core.features.robustBufferAccess = VK_TRUE;
+     enabled.extRobustness2.robustBufferAccess2 = supported.extRobustness2.robustBufferAccess2;
+ 
+@@ -3944,7 +3974,8 @@
+     enabled.core.features.sampleRateShading = VK_TRUE;
+     enabled.core.features.samplerAnisotropy = supported.core.features.samplerAnisotropy;
+     enabled.core.features.shaderClipDistance = VK_TRUE;
+-    enabled.core.features.shaderCullDistance = VK_TRUE;
++    // No D3D9 shader writes a cull distance; MoltenVK does not offer it.
++    enabled.core.features.shaderCullDistance = supported.core.features.shaderCullDistance;
+ 
+     // Ensure we support real BC formats and unofficial vendor ones.
+     enabled.core.features.textureCompressionBC = VK_TRUE;
+@@ -5964,14 +5995,18 @@
+     const uint32_t slot = computeResourceSlotId(
+       samplerInfo.first, DxsoBindingType::Image,
+       samplerInfo.second);
++    const uint32_t depthSlot = computeDepthSlotId(
++      samplerInfo.first, samplerInfo.second);
+ 
+     EmitCs([this,
+-      cSlot = slot,
+-      cKey  = key
++      cSlot      = slot,
++      cDepthSlot = depthSlot,
++      cKey       = key
+     ] (DxvkContext* ctx) {
+       auto pair = m_samplers.find(cKey);
+       if (pair != m_samplers.end()) {
+         ctx->bindResourceSampler(cSlot, pair->second);
++        ctx->bindResourceSampler(cDepthSlot, pair->second);
+         return;
+       }
+ 
+@@ -6012,6 +6047,7 @@
+         auto sampler = m_dxvkDevice->createSampler(info);
+ 
+         m_samplers.insert(std::make_pair(cKey, sampler));
++        ctx->bindResourceSampler(cDepthSlot, sampler);
+         ctx->bindResourceSampler(cSlot, std::move(sampler));
+ 
+         m_samplerCount++;
+@@ -6036,9 +6072,11 @@
+       GetCommonTexture(m_state.textures[StateSampler]);
+ 
+     EmitCs([
+-      cSlot = slot,
++      cSlot      = slot,
++      cDepthSlot = computeDepthSlotId(shaderSampler.first, uint32_t(shaderSampler.second)),
+       cImageView = commonTex->GetSampleView(srgb)
+     ](DxvkContext* ctx) {
++      ctx->bindResourceView(cDepthSlot, cImageView, nullptr);
+       ctx->bindResourceView(cSlot, cImageView, nullptr);
+     });
+   }
+@@ -6055,6 +6093,7 @@
+           DxsoBindingType::Image, uint32_t(shaderSampler.second));
+ 
+         ctx->bindResourceView(slot, nullptr, nullptr);
++        ctx->bindResourceView(computeDepthSlotId(shaderSampler.first, uint32_t(shaderSampler.second)), nullptr, nullptr);
+       }
+     });
+   }
+@@ -6110,6 +6149,23 @@
+ 
+ 
+   void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType) {
++    if (unlikely(m_warmFlag != nullptr)) {
++      bool warm = *m_warmFlag != 0;
++      if (unlikely(warm != m_warmActive)) {
++        m_warmActive = warm;
++        EmitCs([warm] (DxvkContext* ctx) { ctx->setForceAsync(warm); });
++
++        // Warming is over: keep the loading screen up until the pipelines
++        // it queued (and the state cache's for this map) are compiled, so
++        // the map does not stutter compiling them while it is played.
++        if (!warm && env::getEnvVar("DXVK_WARM_WAIT") != "0") {
++          SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
++          uint32_t ms = m_dxvkDevice->waitForPipelines(180000);
++          Logger::info(str::format("D3D9DeviceEx: waited ", ms, " ms for shader warming pipelines"));
++        }
++      }
++    }
++
+     if (unlikely(m_activeHazardsRT != 0)) {
+       EmitCs([](DxvkContext* ctx) {
+         ctx->emitRenderTargetReadbackBarrier();
+@@ -7296,6 +7352,7 @@
+         auto samplerInfo = RemapStateSamplerShader(DWORD(i));
+         uint32_t slot = computeResourceSlotId(samplerInfo.first, DxsoBindingType::Image, uint32_t(samplerInfo.second));
+         ctx->bindResourceView(slot, nullptr, nullptr);
++        ctx->bindResourceView(computeDepthSlotId(samplerInfo.first, uint32_t(samplerInfo.second)), nullptr, nullptr);
+       }
+     });
+ 
+--- a/src/d3d9/d3d9_device.h
++++ b/src/d3d9/d3d9_device.h
+@@ -1230,6 +1230,10 @@
+     uint32_t                        m_lastPointMode = 0;
+     uint32_t                        m_lastFetch4    = 0;
+     uint32_t                        m_lastHazardsDS = 0;
++
++    // Black Ops (t5sp.exe): flag the game sets while it warms its shaders
++    volatile const uint32_t*        m_warmFlag   = nullptr;
++    bool                            m_warmActive = false;
+     uint32_t                        m_lastSamplerTypesFF = 0;
+ 
+     D3D9ShaderMasks                 m_vsShaderMasks = D3D9ShaderMasks();
+--- a/src/d3d9/d3d9_include.h
++++ b/src/d3d9/d3d9_include.h
+@@ -79,10 +79,13 @@
+ 
+ // MinGW headers are broken. Who'dve guessed?
+ #ifndef _MSC_VER
++// mingw-w64 12 and later declare it (with the real members)
++#if !defined(__MINGW64_VERSION_MAJOR) || __MINGW64_VERSION_MAJOR < 12
+ typedef struct _D3DDEVINFO_RESOURCEMANAGER
+ {
+   char dummy;
+ } D3DDEVINFO_RESOURCEMANAGER, * LPD3DDEVINFO_RESOURCEMANAGER;
++#endif
+ 
+ #ifndef __WINE__
+ extern "C" WINUSERAPI WINBOOL WINAPI SetProcessDPIAware(VOID);
+--- a/src/dxso/dxso_compiler.cpp
++++ b/src/dxso/dxso_compiler.cpp
+@@ -817,6 +817,8 @@
+     const uint32_t binding = computeResourceSlotId(m_programInfo.type(),
+       DxsoBindingType::Image,
+       idx);
++
++    const uint32_t depthBinding = computeDepthSlotId(m_programInfo.type(), idx);
+ 
+     const bool implicit = m_programInfo.majorVersion() < 2 || m_moduleInfo.options.forceSamplerTypeSpecConstants;
+ 
+@@ -828,7 +830,7 @@
+ 
+       if (samplerType != SamplerTypeTexture3D) {
+         // We could also be depth compared!
+-        DclSampler(idx, binding, samplerType, true, implicit);
++        DclSampler(idx, depthBinding, samplerType, true, implicit);
+       }
+     }
+     else {
+@@ -840,7 +842,7 @@
+         DclSampler(idx, binding, samplerType, false, implicit);
+ 
+         if (samplerType != SamplerTypeTexture3D)
+-          DclSampler(idx, binding, samplerType, true, implicit);
++          DclSampler(idx, depthBinding, samplerType, true, implicit);
+       }
+     }
+ 
+@@ -858,6 +860,13 @@
+     resource.view   = implicit ? VK_IMAGE_VIEW_TYPE_MAX_ENUM : viewType;
+     resource.access = VK_ACCESS_SHADER_READ_BIT;
+     m_resourceSlots.push_back(resource);
++
++    // and the slot of the depth-compare variants, if any were declared
++    if (implicit || SamplerTypeFromTextureType(type) != SamplerTypeTexture3D) {
++      DxvkResourceSlot depthResource = resource;
++      depthResource.slot = depthBinding;
++      m_resourceSlots.push_back(depthResource);
++    }
+   }
+ 
+ 
+--- a/src/dxso/dxso_util.h
++++ b/src/dxso/dxso_util.h
+@@ -53,6 +53,19 @@
+     return DxsoConstantBuffers::VSCount + caps::MaxTexturesVS + DxsoConstantBuffers::PSCount + caps::MaxTexturesPS + 1; // From last pixel shader slot, above.
+   }
+ 
++  // The depth-compare ("shadow") variants of a sampler get their own binding,
++  // right after the software vertex processing buffer. On the sampler's own
++  // binding they shared a slot with the colour variants, which SPIR-V allows
++  // but Metal does not: MoltenVK could not place them and the shaders using
++  // that sampler failed to compile. The device binds the same image and
++  // sampler to both slots.
++  constexpr uint32_t computeDepthSlotId(
++        DxsoProgramType shaderStage,
++        uint32_t        bindingIndex) {
++    return getSWVPBufferSlot() + 1 + bindingIndex
++      + (shaderStage == DxsoProgramType::PixelShader ? caps::MaxTexturesVS : 0);
++  }
++
+   uint32_t RegisterLinkerSlot(DxsoSemantic semantic);
+ 
+ }
+\ No newline at end of file
+--- a/src/dxvk/dxvk_context.cpp
++++ b/src/dxvk/dxvk_context.cpp
+@@ -4154,7 +4154,7 @@
+     
+     // Retrieve and bind actual Vulkan pipeline handle
+     m_gpActivePipeline = m_state.gp.pipeline->getPipelineHandle(
+-      m_state.gp.state, m_state.om.framebufferInfo.renderPass());
++      m_state.gp.state, m_state.om.framebufferInfo.renderPass(), this->checkAsyncCompilationCompat());
+ 
+     if (unlikely(!m_gpActivePipeline))
+       return false;
+@@ -4395,7 +4395,7 @@
+   }
+ 
+ 
+-  void DxvkContext::updateFramebuffer() {
++  void DxvkContext::updateFramebuffer(bool isDraw) {
+     if (m_flags.test(DxvkContextFlag::GpDirtyFramebuffer) || (m_hackRenderAreaTrimmedToViewport && m_flags.test(DxvkContextFlag::GpDirtyViewport))) {
+       m_flags.clr(DxvkContextFlag::GpDirtyFramebuffer);
+ 
+@@ -4417,6 +4417,11 @@
+         m_state.gp.state.omSwizzle[i] = DxvkOmAttachmentSwizzle(mapping);
+       }
+ 
++      if (isDraw) {
++        for (uint32_t i = 0; i < fbInfo.numAttachments(); i++)
++          fbInfo.getAttachment(i).view->setRtBindingFrameId(m_device->getCurrentFrameId());
++      }
++
+       m_flags.set(DxvkContextFlag::GpDirtyPipelineState);
+     }
+   }
+@@ -4822,7 +4827,7 @@
+     m_hackRenderAreaTrimmedToViewport = !m_state.om.framebufferInfo.numAttachments() && m_device->adapter()->matchesDriver((DxvkGpuVendor)0, VK_DRIVER_ID_MOLTENVK, 0, 0);
+ 
+     if (m_flags.test(DxvkContextFlag::GpDirtyFramebuffer) || (m_hackRenderAreaTrimmedToViewport && m_flags.test(DxvkContextFlag::GpDirtyViewport)))
+-      this->updateFramebuffer();
++      this->updateFramebuffer(true);
+ 
+     if (!m_flags.test(DxvkContextFlag::GpRenderPassBound))
+       this->startRenderPass();
+@@ -5238,7 +5243,18 @@
+     return true;
+   }
+   
++  bool DxvkContext::checkAsyncCompilationCompat() {
++    if (m_forceAsync)
++      return true;
+ 
++    bool fbCompat = true;
++    for (uint32_t i = 0; fbCompat && i < m_state.om.framebufferInfo.numAttachments(); i++) {
++      const auto& attachment = m_state.om.framebufferInfo.getAttachment(i);
++      fbCompat &= attachment.view->getRtBindingAsyncCompilationCompat();
++    }
++    return fbCompat;
++  }
++
+   DxvkGraphicsPipeline* DxvkContext::lookupGraphicsPipeline(
+     const DxvkGraphicsPipelineShaders&  shaders) {
+     auto idx = shaders.hash() % m_gpLookupCache.size();
+--- a/src/dxvk/dxvk_context.h
++++ b/src/dxvk/dxvk_context.h
+@@ -21,6 +21,14 @@
+   class DxvkContext : public RcObject {
+     constexpr static VkDeviceSize StagingBufferSize = 4ull << 20;
+   public:
++
++    /**
++     * \brief Compiles missing pipelines in the background for every draw
++     *
++     * Set while a game warms its shaders: those draws are never shown,
++     * so they need not wait for their pipelines.
++     */
++    void setForceAsync(bool forceAsync) { m_forceAsync = forceAsync; }
+     
+     DxvkContext(const Rc<DxvkDevice>& device);
+     ~DxvkContext();
+@@ -1076,6 +1084,7 @@
+     DxvkRenderTargetLayouts m_rtLayouts = { };
+ 
+     VkPipeline m_gpActivePipeline = VK_NULL_HANDLE;
++    bool       m_forceAsync = false;
+     VkPipeline m_cpActivePipeline = VK_NULL_HANDLE;
+ 
+     VkDescriptorSet m_gpSet = VK_NULL_HANDLE;
+@@ -1249,7 +1258,7 @@
+     DxvkFramebufferInfo makeFramebufferInfo(
+       const DxvkRenderTargets&      renderTargets);
+ 
+-    void updateFramebuffer();
++    void updateFramebuffer(bool isDraw = false);
+     
+     void applyRenderTargetLoadLayouts();
+ 
+@@ -1329,6 +1338,8 @@
+       const Rc<DxvkBuffer>&           buffer,
+             VkDeviceSize              copySize);
+ 
++    bool checkAsyncCompilationCompat();
++
+     DxvkGraphicsPipeline* lookupGraphicsPipeline(
+       const DxvkGraphicsPipelineShaders&  shaders);
+ 
+--- a/src/dxvk/dxvk_device.h
++++ b/src/dxvk/dxvk_device.h
+@@ -358,6 +358,14 @@
+      * usage, draw calls, etc.
+      */
+     DxvkStatCounters getStatCounters();
++
++    /**
++     * \brief Waits for queued pipeline compilation
++     * \returns Milliseconds waited
++     */
++    uint32_t waitForPipelines(uint32_t timeoutMs) {
++      return m_objects.pipelineManager().waitForPipelines(timeoutMs);
++    }
+ 
+     /**
+      * \brief Retrieves memors statistics
+--- a/src/dxvk/dxvk_graphics.cpp
++++ b/src/dxvk/dxvk_graphics.cpp
+@@ -62,7 +62,8 @@
+ 
+   VkPipeline DxvkGraphicsPipeline::getPipelineHandle(
+     const DxvkGraphicsPipelineStateInfo& state,
+-    const DxvkRenderPass*                renderPass) {
++    const DxvkRenderPass*                renderPass,
++          bool                           async) {
+     DxvkGraphicsPipelineInstance* instance = this->findInstance(state, renderPass);
+ 
+     if (unlikely(!instance)) {
+@@ -71,34 +72,41 @@
+         return VK_NULL_HANDLE;
+ 
+       // Prevent other threads from adding new instances and check again
+-      std::lock_guard<dxvk::mutex> lock(m_mutex);
++      //std::lock_guard<dxvk::mutex> lock(m_mutex);
+       instance = this->findInstance(state, renderPass);
+ 
+       if (!instance) {
+         // Keep pipeline object locked, at worst we're going to stall
+         // a state cache worker and the current thread needs priority.
+-        instance = this->createInstance(state, renderPass);
+-        this->writePipelineStateToCache(state, renderPass->format());
++        if ((async || m_pipeMgr->m_asyncAll) && m_pipeMgr->m_compiler != nullptr)
++          m_pipeMgr->m_compiler->queueCompilation(this, state, renderPass);
++        else {
++          instance = this->createInstance(state, renderPass);
++          this->writePipelineStateToCache(state, renderPass->format());
++        }
+       }
+     }
+ 
++    if (!instance)
++      return VK_NULL_HANDLE;
++
+     return instance->pipeline();
+   }
+ 
+ 
+-  void DxvkGraphicsPipeline::compilePipeline(
++  bool DxvkGraphicsPipeline::compilePipeline(
+     const DxvkGraphicsPipelineStateInfo& state,
+     const DxvkRenderPass*                renderPass) {
+     // Exit early if the state vector is invalid
+     if (!this->validatePipelineState(state, false))
+-      return;
++      return false;
+ 
+     // Keep the object locked while compiling a pipeline since compiling
+     // similar pipelines concurrently is fragile on some drivers
+     std::lock_guard<dxvk::mutex> lock(m_mutex);
+ 
+-    if (!this->findInstance(state, renderPass))
+-      this->createInstance(state, renderPass);
++    return (this->findInstance(state, renderPass) == nullptr) &&
++           (this->createInstance(state, renderPass) != nullptr);
+   }
+ 
+ 
+@@ -107,6 +115,7 @@
+     const DxvkRenderPass*                renderPass) {
+     VkPipeline pipeline = this->createPipeline(state, renderPass);
+ 
++    std::lock_guard<dxvk::mutex> lock(m_mutex2);
+     m_pipeMgr->m_numGraphicsPipelines += 1;
+     return &(*m_pipelines.emplace(state, renderPass, pipeline));
+   }
+@@ -115,6 +124,7 @@
+   DxvkGraphicsPipelineInstance* DxvkGraphicsPipeline::findInstance(
+     const DxvkGraphicsPipelineStateInfo& state,
+     const DxvkRenderPass*                renderPass) {
++    std::lock_guard<dxvk::mutex> lock(m_mutex2);
+     for (auto& instance : m_pipelines) {
+       if (instance.isCompatible(state, renderPass))
+         return &instance;
+--- a/src/dxvk/dxvk_graphics.h
++++ b/src/dxvk/dxvk_graphics.h
+@@ -199,11 +199,13 @@
+      * state. If necessary, a new pipeline will be created.
+      * \param [in] state Pipeline state vector
+      * \param [in] renderPass The render pass
++     * \param [in] async Compile asynchronously
+      * \returns Pipeline handle
+      */
+     VkPipeline getPipelineHandle(
+       const DxvkGraphicsPipelineStateInfo&    state,
+-      const DxvkRenderPass*                   renderPass);
++      const DxvkRenderPass*                   renderPass,
++            bool                              async);
+     
+     /**
+      * \brief Compiles a pipeline
+@@ -212,11 +214,16 @@
+      * and stores the result for future use.
+      * \param [in] state Pipeline state vector
+      * \param [in] renderPass The render pass
++     * \returns \c true if compile succeeded
+      */
+-    void compilePipeline(
++    bool compilePipeline(
+       const DxvkGraphicsPipelineStateInfo&    state,
+       const DxvkRenderPass*                   renderPass);
+     
++    void writePipelineStateToCache(
++      const DxvkGraphicsPipelineStateInfo& state,
++      const DxvkRenderPassFormat&          format) const;
++
+   private:
+     
+     Rc<vk::DeviceFn>            m_vkd;
+@@ -236,6 +243,8 @@
+     // List of pipeline instances, shared between threads
+     alignas(CACHE_LINE_SIZE)
+     dxvk::mutex                               m_mutex;
++    alignas(CACHE_LINE_SIZE)
++    dxvk::mutex                               m_mutex2;
+     sync::List<DxvkGraphicsPipelineInstance>  m_pipelines;
+     
+     DxvkGraphicsPipelineInstance* createInstance(
+@@ -264,10 +273,6 @@
+       const DxvkGraphicsPipelineStateInfo& state,
+             bool                           trusted) const;
+     
+-    void writePipelineStateToCache(
+-      const DxvkGraphicsPipelineStateInfo& state,
+-      const DxvkRenderPassFormat&          format) const;
+-    
+     void logPipelineState(
+             LogLevel                       level,
+       const DxvkGraphicsPipelineStateInfo& state) const;
+--- a/src/dxvk/dxvk_image.h
++++ b/src/dxvk/dxvk_image.h
+@@ -550,8 +550,39 @@
+       return vk::checkSubresourceRangeOverlap(
+         this->imageSubresources(),
+         view->imageSubresources());
++    }
++
++    /**
++     * \brief Sets render target usage frame number
++     *
++     * The image view will track internally when
++     * it was last used as a render target. This
++     * info is used for async shader compilation.
++     * \param [in] frameId Frame number
++     */
++    void setRtBindingFrameId(uint32_t frameId) {
++      if (frameId != m_rtBindingFrameId) {
++        if (frameId == m_rtBindingFrameId + 1)
++          m_rtBindingFrameCount += 1;
++        else
++          m_rtBindingFrameCount = 0;
++
++        m_rtBindingFrameId = frameId;
++      }
+     }
+ 
++    /**
++     * \brief Checks for async pipeline compatibility
++     *
++     * Asynchronous pipeline compilation may be enabled if the
++     * render target has been drawn to in the previous frames.
++     * \param [in] frameId Current frame ID
++     * \returns \c true if async compilation is supported
++     */
++    bool getRtBindingAsyncCompilationCompat() const {
++      return m_rtBindingFrameCount >= 5;
++    }
++
+   private:
+     
+     Rc<vk::DeviceFn>  m_vkd;
+@@ -564,6 +595,9 @@
+ 
+     static std::atomic<uint64_t> s_cookie;
+ 
++    uint32_t m_rtBindingFrameId    = 0;
++    uint32_t m_rtBindingFrameCount = 0;
++
+     void createView(VkImageViewType type, uint32_t numLayers);
+     
+   };
+--- a/src/dxvk/dxvk_options.cpp
++++ b/src/dxvk/dxvk_options.cpp
+@@ -9,6 +9,8 @@
+     useRawSsbo            = config.getOption<Tristate>("dxvk.useRawSsbo",             Tristate::Auto);
+     shrinkNvidiaHvvHeap   = config.getOption<Tristate>("dxvk.shrinkNvidiaHvvHeap",    Tristate::Auto);
+     hud                   = config.getOption<std::string>("dxvk.hud", "");
++    enableAsync           = config.getOption<bool>    ("dxvk.enableAsync",            false);
++    numAsyncThreads       = config.getOption<int32_t> ("dxvk.numAsyncThreads",        0);
+   }
+ 
+ }
+--- a/src/dxvk/dxvk_options.h
++++ b/src/dxvk/dxvk_options.h
+@@ -18,6 +18,13 @@
+     /// when using the state cache
+     int32_t numCompilerThreads;
+ 
++    // Enable async pipelines
++    bool enableAsync;
++
++    /// Number of compiler threads
++    /// when using async pipelines
++    int32_t numAsyncThreads;
++
+     /// Shader-related options
+     Tristate useRawSsbo;
+ 
+--- a/src/dxvk/dxvk_pipecompiler.cpp
++++ b/src/dxvk/dxvk_pipecompiler.cpp
+@@ -42,6 +42,7 @@
+     const DxvkGraphicsPipelineStateInfo&    state,
+     const DxvkRenderPass*                   renderPass) {
+     std::lock_guard<std::mutex> lock(m_compilerLock);
++    m_pending += 1;
+     m_compilerQueue.push({ pipeline, state, renderPass });
+     m_compilerCond.notify_one();
+   }
+@@ -70,6 +71,9 @@
+           entry.pipeline->compilePipeline(entry.state, entry.renderPass)) {
+           entry.pipeline->writePipelineStateToCache(entry.state, entry.renderPass->format());
+       }
++
++      if (entry.pipeline != nullptr)
++        m_pending -= 1;
+     }
+   }
+ 
+--- a/src/dxvk/dxvk_pipecompiler.h
++++ b/src/dxvk/dxvk_pipecompiler.h
+@@ -23,6 +23,11 @@
+ 
+   public:
+ 
++    /**
++     * \brief Number of pipelines queued or compiling
++     */
++    uint32_t pendingCount() const { return m_pending.load(); }
++
+     DxvkPipelineCompiler(const DxvkDevice* device);
+     ~DxvkPipelineCompiler();
+ 
+@@ -49,6 +54,7 @@
+     };
+ 
+     std::atomic<bool>           m_compilerStop = { false };
++    std::atomic<uint32_t>       m_pending = { 0 };
+     std::mutex                  m_compilerLock;
+     std::condition_variable     m_compilerCond;
+     std::queue<PipelineEntry>   m_compilerQueue;
+--- a/src/dxvk/dxvk_pipemanager.cpp
++++ b/src/dxvk/dxvk_pipemanager.cpp
+@@ -9,7 +9,18 @@
+           DxvkRenderPassPool* passManager)
+   : m_device    (device),
+     m_cache     (new DxvkPipelineCache(device->vkd())) {
++    std::string useAsync      = env::getEnvVar("DXVK_ASYNC");
+     std::string useStateCache = env::getEnvVar("DXVK_STATE_CACHE");
++
++    // DXVK_ASYNC=2: compile every missing pipeline in the background, also for
++    // render targets first bound this frame (a game's one-frame shader
++    // warming pass would otherwise compile everything synchronously)
++    if (useAsync == "2") {
++      m_compiler = new DxvkPipelineCompiler(device);
++      m_asyncAll = true;
++    } else
++    if (useAsync == "1" || device->config().enableAsync)
++      m_compiler = new DxvkPipelineCompiler(device);
+     
+     if (useStateCache != "0" && device->config().enableStateCache)
+       m_stateCache = new DxvkStateCache(device, this, passManager);
+@@ -80,6 +91,25 @@
+   }
+ 
+ 
++  uint32_t DxvkPipelineManager::waitForPipelines(uint32_t timeoutMs) const {
++    auto t0 = dxvk::high_resolution_clock::now();
++    uint32_t waited = 0;
++
++    while (waited < timeoutMs) {
++      bool busy = (m_stateCache != nullptr && m_stateCache->hasPendingWork())
++               || (m_compiler   != nullptr && m_compiler->pendingCount() != 0);
++      if (!busy)
++        break;
++
++      Sleep(10);
++      waited = uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(
++        dxvk::high_resolution_clock::now() - t0).count());
++    }
++
++    return waited;
++  }
++
++
+   void DxvkPipelineManager::stopWorkerThreads() const {
+     if (m_stateCache != nullptr)
+       m_stateCache->stopWorkerThreads();
+--- a/src/dxvk/dxvk_pipemanager.h
++++ b/src/dxvk/dxvk_pipemanager.h
+@@ -6,6 +6,7 @@
+ 
+ #include "dxvk_compute.h"
+ #include "dxvk_graphics.h"
++#include "dxvk_pipecompiler.h"
+ 
+ namespace dxvk {
+ 
+@@ -91,6 +92,14 @@
+     bool isCompilingShaders() const;
+ 
+     /**
++     * \brief Waits until no pipeline is queued or compiling
++     *
++     * \param [in] timeoutMs Gives up after this long
++     * \returns Milliseconds waited
++     */
++    uint32_t waitForPipelines(uint32_t timeoutMs) const;
++
++    /**
+      * \brief Stops async compiler threads
+      */
+     void stopWorkerThreads() const;
+@@ -100,6 +109,8 @@
+     DxvkDevice*               m_device;
+     Rc<DxvkPipelineCache>     m_cache;
+     Rc<DxvkStateCache>        m_stateCache;
++    Rc<DxvkPipelineCompiler>  m_compiler;
++    bool                      m_asyncAll = false;
+ 
+     std::atomic<uint32_t>     m_numComputePipelines  = { 0 };
+     std::atomic<uint32_t>     m_numGraphicsPipelines = { 0 };
+--- a/src/dxvk/dxvk_state_cache.h
++++ b/src/dxvk/dxvk_state_cache.h
+@@ -84,6 +84,14 @@
+       return m_workerBusy.load() > 0;
+     }
+ 
++    /**
++     * \brief Checks whether pipelines are queued or compiling
++     */
++    bool hasPendingWork() {
++      std::lock_guard<dxvk::mutex> lock(m_workerLock);
++      return m_workerBusy.load() > 0 || !m_workerQueue.empty();
++    }
++
+   private:
+ 
+     using WriterItem = DxvkStateCacheEntry;
+--- a/src/dxvk/meson.build
++++ b/src/dxvk/meson.build
+@@ -91,6 +91,7 @@
+   'dxvk_openxr.cpp',
+   'dxvk_options.cpp',
+   'dxvk_pipecache.cpp',
++  'dxvk_pipecompiler.cpp',
+   'dxvk_pipelayout.cpp',
+   'dxvk_pipemanager.cpp',
+   'dxvk_queue.cpp',
