@@ -1,6 +1,6 @@
-# Black Ops Mac
+# BO-Mac
 
-**Call of Duty: Black Ops, Black Ops II and Black Ops III on Apple silicon Macs — in one app.**
+**Call of Duty: Black Ops, Black Ops II and Black Ops III (Mac and Windows versions) on Apple silicon Macs — in one app.**
 
 Choose your game folder, press Install, press Play. No CrossOver, no Wine to install, no `.command` files, no Terminal.
 
@@ -8,7 +8,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 
 ## What it does
 
-### Black Ops (Plutonium T5)
+### T5 – BOI · Black Ops (Plutonium)
 
 - **Online through Plutonium and offline** — Zombies, Campaign and Multiplayer, with every patch below applied in both.
 - **~160 FPS on an M1 Pro**, held steady: worst frames around 10–15 ms instead of constant stutter.
@@ -18,14 +18,14 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Gunfire sound fixed** (the game's own XAudio2), **shadow freeze fixed**.
 - **Your settings from the start**: fullscreen at your display's resolution, sync every frame, automatic texture quality, 16x anisotropic filtering, shader warming on.
 
-### Black Ops II (Plutonium T6)
+### T6 – BOII · Black Ops II (Plutonium)
 
 - **Online through Plutonium and offline** — Zombies and Multiplayer.
 - **160 FPS on an M1 Pro** (capped at the display's refresh rate) instead of ~86 FPS in slow motion: Direct3D 11 runs on Metal through DXMT, with background pipeline compilation and frame pacing.
 - **Starts fullscreen at 1920×1080** with anti-aliasing Apple GPUs support (it otherwise opened in a small 800×600 window).
 - **Zombies Declassified** built in — Black Ops II's unreleased "DLC 5" (Nacht der Untoten, Verrückt, Shi No Numa, Der Riese, Kino der Toten, "Five", Ascension, Shangri-La, Moon): one-click install with the mod's own verified installer, a **Declassified** play button, file check and remove.
 
-### Black Ops III (Steam, native Mac version)
+### T7 – BOIII (Mac Version) · Black Ops III from Steam
 
 - **Play on Steam *and* on the community servers with the same install.** BO3MacFix (with the T7Patch 3.09 security and gameplay fixes, audio and stutter fixes) goes into your Steam copy of the game: **Play on Steam** starts it for Steam's own matchmaking, and **Community Servers** opens the server browser for the BOIII/Ezz dedicated servers — the same servers Windows players join.
 - **T7 Server Browser**: every community server with map, mode, round, players and ping; search and filters; type your player name and press Join — it starts the game through Steam and connects you.
@@ -35,6 +35,18 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Joins busy servers** (the client finds the server id Windows servers never send to the Mac, also on long-running servers) and **skips the intro cutscene** as soon as the map has loaded.
 - **Ranked spoofing (optional, off by default)**, with its risks stated: it changes your real Steam stats and can get your account banned.
 - Everything is included in the app (source in `bo3/`): nothing is downloaded from anywhere else.
+
+### T7 – BOIII (Windows Version) · Black Ops III for Windows through boiii
+
+- **The Windows game on the BOIII / Ezz community client** ([boiii.exe](https://github.com/Ezz-lol/boiii-free), downloaded from its latest release and checked against its published SHA-256), on our engine with DXMT (Direct3D 11 → Metal).
+- **No Steam needed**: the game refuses to start without Steam installed; the app registers an empty Steam folder whose `steam.exe` does nothing, so boiii plays without Steam or a Steam login.
+- **Windows Media Feature Pack check passed**: the engine now has Media Foundation's video decoders (Wine's winegstreamer with GStreamer and Apple's VideoToolbox hardware decoder).
+- **Renders correctly on Metal**: a DXMT fix for the game's upscaling pass (it binds a render target larger than its depth buffer; DXMT dropped those draws and the screen stayed black).
+- **Full detail from the first start**: the game's auto-detect doesn't know Apple GPUs and picks half resolution with no shadows; instead it starts fullscreen at your display's size and refresh rate, 100% resolution, shadows, volumetric lighting, ambient occlusion and SMAA (once — the game's own options rule afterwards).
+- **Fullscreen at 1x**: the display switches to a 1x mode of its size while the game runs, so the picture fills the screen on HiDPI displays.
+- **No Safe Mode prompt** after the game is stopped from the app.
+- **Back up your stats**: *Back Up Stats…* saves your stats, loadouts, save games and the identity keys the servers know you by in one zip — keep it, take it to another Mac (*Restore Stats…*) or to Windows.
+- Known issue: pre-rendered cutscene videos show wrong colours (purple/green); the game itself is unaffected.
 
 ### For every game
 
@@ -48,7 +60,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Every patch can be switched off** in each game's settings, with an ⓘ explaining what it does.
 - **Plutonium's folder picker** opens with shortcuts to your Mac home, Downloads, Documents and the game folders.
 - **Remove setup** for each game, to start again from scratch (everything goes to the Trash; your games are never touched).
-- **Updates**: the app tells you when a new version is out (and *Black Ops Mac → Check for Updates…*); after updating it refreshes the files it installed, keeping your settings, Plutonium login and shader caches.
+- **Updates**: the app tells you when a new version is out (and *BO-Mac → Check for Updates…*); after updating it refreshes the files it installed, keeping your settings, Plutonium login and shader caches.
 - **No macOS accent menu** when holding a movement key in the games.
 
 ## Requirements
@@ -57,11 +69,11 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - Nothing else: no CrossOver, no Wine to install. The app downloads our engine, built entirely from open source (see *The engine* below).
 - Your own copies of the games:
   - Black Ops / Black Ops II folders with `plutonium.exe` inside (from [plutonium.pw](https://plutonium.pw)), and a Plutonium account to play online.
-  - Black Ops III from Steam (the Mac version).
+  - Black Ops III from Steam (the Mac version), and/or the Windows version of Black Ops III (the game folder with `BlackOps3.exe`).
 
 ## Use it
 
-1. Download `Black Ops Mac.app` from the [latest release](https://github.com/sirdankdabs/bo-mac/releases/latest) (or build it: `./build-app.sh`, requires the Xcode command line tools). The first time, right-click it → **Open** (it is not notarized).
+1. Download `BO-Mac.app` from the [latest release](https://github.com/sirdankdabs/bo-mac/releases/latest) (or build it: `./build-app.sh`, requires the Xcode command line tools). The first time, right-click it → **Open** (it is not notarized).
 
 2. **Prepare your game folder:** Make sure your game files are in a single folder containing `plutonium.exe`. This is the folder you must select during installation when prompted to choose the game directory.
 
@@ -69,7 +81,25 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
    - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
    - **Black Ops III**: Once the game is installed through Steam, click *Install* → the server browser will open. From there, select any server you want to join, and the game will launch automatically. Once the game opens, navigate to the corresponding game mode (e.g., Zombies), and you'll automatically join the selected server. Alternatively, you can launch the game directly through Steam to join Steam servers or open the server browser separately to connect to community servers.
 
+   - **Black Ops III (Windows Version)** — see below.
+
 4. The first time you load a Black Ops map, the loading screen will remain visible while all shaders are compiled (up to about a minute). Subsequent loads will be much faster.
+
+## Playing the Windows version of Black Ops III
+
+1. Get the **Windows** version of Black Ops III onto your Mac: a folder with `BlackOps3.exe`, `zone/` and `video/` inside (for example, copy it from a Windows PC, or download it with Steam on Windows). Keep it anywhere, e.g. `~/Games/Black Ops III`.
+2. Open BO-Mac and choose **T7 – BOIII (Windows Version)**.
+3. Follow the checklist, top to bottom:
+   - **Engine** → *Install* (shared with the other games; skip if it's already there).
+   - **Game folder** → *Choose…* the folder with `BlackOps3.exe`.
+   - **Wine prefix** → *Create* (skip if you already play Black Ops / Black Ops II here).
+   - **boiii.exe** → *Download* (the latest BOIII / Ezz client, verified, put into the game folder).
+4. Press **Play**. The first start takes a little longer while shaders compile; the game opens fullscreen with full detail.
+5. In the game, pick **Zombies** or **Multiplayer** and use boiii's **server browser** to join community servers, or play solo / with bots.
+6. **Settings** (white button): every fix can be switched off, with an ⓘ for each.
+7. **Back Up Stats…** now and then: your stats live in the game folder and your identity in the Wine prefix — the backup has both. On Windows, put `boiii_players` next to `boiii.exe` and the `key` files in `%LOCALAPPDATA%\boiii\user`.
+
+Your player name comes from the app's **Settings** (Player name). Friends, the server browser and the rest of boiii's features are in the game's own menus. *BOIII Launcher* opens boiii's separate launcher window, which still shows up blank under Wine (known issue): **Play** goes straight into the game.
 
 ## The engine
 
@@ -78,6 +108,7 @@ Built entirely from open source by `engine/build-engine.sh`, and published in th
 - **Wine** — CodeWeavers' published CrossOver 26.3 source code (LGPL), with our patches (`kit/patches`), compiled for Apple silicon (x86_64 under Rosetta 2, 32- and 64-bit Windows programs).
 - **macOS libraries** Wine loads (FreeType, GnuTLS and its dependencies, SDL2, libinotify) — x86_64 builds from [Sikarugir](https://github.com/Sikarugir-App)'s wrapper template.
 - **Wine Mono** from WineHQ, for Plutonium's installer.
+- **winegstreamer** with **GStreamer 1.24** (LGPL, CrossOver 26's x86_64 build) and its plugins, for Media Foundation video decoding.
 - Completed at install time with our DXVK, DXMT, MoltenVK (Khronos) and athei's x87sidecar.
 
 No CrossOver installation, licence or trial is involved. (If the engine release cannot be downloaded, the installer falls back to CrossOver 26.3's runtime.)
@@ -91,6 +122,7 @@ kit/                 what the app runs (also usable from Terminal)
   setup-prefix.sh      Wine prefix + Plutonium (install or import)
   launch.sh            starts a game with every patch (settings.conf switches)
   bo3.sh               BO3 Mac Client install / open / Steam / ranked spoofing
+  boiii.sh             boiii.exe download (verified) and stats backup / restore
   zombies-declassified.sh   the BO2 mod (via its own verified installer)
   uninstall.sh         remove a game's setup (to the Trash)
   prepare-shaders.sh   optional: compile every BO1 map ahead of time
@@ -100,7 +132,7 @@ kit/                 what the app runs (also usable from Terminal)
   tools/               mvkcache.c (MoltenVK cache), statecache-merge.py, displaymode, gamemode-plist.py
 engine/              build-engine.sh / pack-engine.sh: the engine from source
 bo3/                 BO3 Mac Client source (SwiftUI browser + client engine) and BO3MacFix source (LGPL-2.1)
-build-app.sh         builds dist/Black Ops Mac.app
+build-app.sh         builds dist/BO-Mac.app
 ```
 
 ## Credits
@@ -113,6 +145,8 @@ build-app.sh         builds dist/Black Ops Mac.app
 - **Khronos / MoltenVK** contributors.
 - **Logo-2K** — [Zombies Declassified](https://github.com/Logo-2K/zombies-declassified).
 - **BO3 Mac Client** (included in `bo3/` and `kit/payload/bo3`), built on **BO3MacFix** by Emma / InvoxiPlayGames and Anthony / serious, with **T7Patch** work by its authors; the community server project behind `master.ezz.lol`.
+- **Ezz / BOIII** — [boiii-free](https://github.com/Ezz-lol/boiii-free), the community client for the Windows version (downloaded from its latest release), built on momo5502's BOIII.
+- **GStreamer** contributors.
 
 Not affiliated with Activision, Treyarch, Aspyr, Valve, CodeWeavers or Plutonium. Call of Duty and Black Ops are trademarks of Activision Publishing, Inc. You need your own copies of the games.
 

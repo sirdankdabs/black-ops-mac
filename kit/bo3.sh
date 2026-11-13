@@ -1,10 +1,10 @@
 #!/bin/bash
-# Black Ops Mac: Black Ops III on the community servers, through BO3 Mac Client
+# BO-Mac: Black Ops III on the community servers, through BO3 Mac Client
 # (bundled in kit/payload/bo3, source in bo3/), installed as it is:
 #  - BO3MacFix goes into the Steam game (CoDBlkOps3.app), the same way the
 #    project's own installer does it;
-#  - its server browser app is kept inside Black Ops Mac's folder as
-#    "T7 Server Browser.app" and opened from the Black Ops Mac app.
+#  - its server browser app is kept inside BO-Mac's folder as
+#    "T7 Server Browser.app" and opened from the BO-Mac app.
 #
 #   bo3.sh status     game=<folder>, state=ready|downloading|missing, installed=<version>, latest=<version>
 #   bo3.sh install    install the bundled version (then opens the browser)
@@ -74,7 +74,7 @@ install)
   esac
   mkdir -p "$dir"
   sha=$(latest)
-  [ -f "$bundle/Install BO3 Mac Client.command" ] || die "BO3 Mac Client is missing from Black Ops Mac"
+  [ -f "$bundle/Install BO3 Mac Client.command" ] || die "BO3 Mac Client is missing from BO-Mac"
   step "Preparing BO3 Mac Client ($sha)"
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' EXIT

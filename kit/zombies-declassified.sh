@@ -1,5 +1,5 @@
 #!/bin/bash
-# Black Ops Mac: Zombies Declassified (github.com/Logo-2K/zombies-declassified,
+# BO-Mac: Zombies Declassified (github.com/Logo-2K/zombies-declassified,
 # by Logo-2K), Black Ops II's unreleased "DLC 5": Black Ops 1 and World at
 # War's zombies maps ported to Black Ops II, as a Plutonium mod.
 #
@@ -66,7 +66,7 @@ remove)
   [ -f "$state" ] || die "Zombies Declassified is not installed"
   [ -d "$bo2/sound" ] || die "set the Black Ops II folder first"
   step "Moving Zombies Declassified's files to the Trash"
-  dest="$HOME/.Trash/Zombies Declassified (Black Ops Mac $(date '+%Y-%m-%d %H.%M.%S'))"
+  dest="$HOME/.Trash/Zombies Declassified (BO-Mac $(date '+%Y-%m-%d %H.%M.%S'))"
   /usr/bin/python3 -I - "$state" "$t6" "$bo2" "$dest" <<'PY'
 import json, os, shutil, sys
 state, t6, bo2, dest = sys.argv[1:5]

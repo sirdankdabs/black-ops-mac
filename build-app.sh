@@ -1,14 +1,14 @@
 #!/bin/bash
-# Builds "Black Ops Mac.app" (with the kit inside) into dist/.
+# Builds "BO-Mac.app" (with the kit inside) into dist/.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "$0")" && pwd)
 version=$(cat "$root/kit/VERSION")
-app="$root/dist/Black Ops Mac.app"
+app="$root/dist/BO-Mac.app"
 build="$root/.build"
 
 echo "==> Compiling the app"
-swift build -c release --package-path "$root/app" --scratch-path "$build/swift" >/dev/null
-bin=$(swift build -c release --package-path "$root/app" --scratch-path "$build/swift" --show-bin-path)/BlackOpsMac
+swift build -c release -Xswiftc -file-prefix-map -Xswiftc "$root=." --package-path "$root/app" --scratch-path "$build/swift" >/dev/null
+bin=$(swift build -c release -Xswiftc -file-prefix-map -Xswiftc "$root=." --package-path "$root/app" --scratch-path "$build/swift" --show-bin-path)/BlackOpsMac
 
 echo "==> Drawing the icon"
 rm -rf "$build/AppIcon.iconset"
@@ -20,6 +20,7 @@ echo "==> Assembling $app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/BlackOpsMac"
+strip -S "$app/Contents/MacOS/BlackOpsMac"   # no build paths in the app
 cp "$build/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 ditto "$root/kit" "$app/Contents/Resources/kit"
 cat > "$app/Contents/Info.plist" <<EOF
@@ -27,8 +28,8 @@ cat > "$app/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Black Ops Mac</string>
-  <key>CFBundleDisplayName</key><string>Black Ops Mac</string>
+  <key>CFBundleName</key><string>BO-Mac</string>
+  <key>CFBundleDisplayName</key><string>BO-Mac</string>
   <key>CFBundleIdentifier</key><string>io.github.blackopsmac</string>
   <key>CFBundleExecutable</key><string>BlackOpsMac</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -38,7 +39,7 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>Black Ops Mac uses the microphone for in-game voice chat in Black Ops and Black Ops II.</string>
+  <key>NSMicrophoneUsageDescription</key><string>BO-Mac uses the microphone for in-game voice chat in Black Ops and Black Ops II.</string>
 </dict>
 </plist>
 EOF

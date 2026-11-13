@@ -1,5 +1,5 @@
 #!/bin/bash
-# Black Ops Mac: the Wine prefix the games run in, with Plutonium.
+# BO-Mac: the Wine prefix the games run in, with Plutonium.
 #
 #   setup-prefix.sh init                    new prefix only (no Plutonium)
 #   setup-prefix.sh create <game folder>    new prefix; installs Plutonium with

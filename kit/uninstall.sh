@@ -1,5 +1,5 @@
 #!/bin/bash
-# Black Ops Mac: remove a game's setup so it can be set up again from scratch.
+# BO-Mac: remove a game's setup so it can be set up again from scratch.
 # Everything removed goes to the Trash (nothing is deleted for good), and the
 # games themselves are never touched.
 #
@@ -24,7 +24,7 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 trash() {
   local p=$1 name
   [ -e "$p" ] || return 0
-  name="$(basename "$p") (Black Ops Mac $(date '+%Y-%m-%d %H.%M.%S'))"
+  name="$(basename "$p") (BO-Mac $(date '+%Y-%m-%d %H.%M.%S'))"
   mkdir -p "$HOME/.Trash"
   mv "$p" "$HOME/.Trash/$name" || die "cannot move $p to the Trash"
 }

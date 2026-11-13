@@ -6,7 +6,7 @@ struct BlackOpsMacApp: App {
     // line, a status refresh) would rebuild the whole scene and the menu bar,
     // which made the menus stutter. The window's view observes it instead.
     var body: some Scene {
-        WindowGroup("Black Ops Mac") {
+        WindowGroup("BO-Mac") {
             RootView()
                 .frame(minWidth: 1080, minHeight: 640)
         }
@@ -44,7 +44,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(Game.allCases, selection: $selection) { game in
-                GameRow(game: game).tag(game)
+                GameRow(game: game, selected: game == selection).tag(game)
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 240, ideal: 250, max: 320)
@@ -84,6 +84,7 @@ struct ContentView: View {
 struct GameRow: View {
     @EnvironmentObject var state: AppState
     let game: Game
+    var selected = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -92,7 +93,7 @@ struct GameRow: View {
                 .frame(width: 34, height: 34)
                 .overlay(Image(systemName: game.symbol).foregroundStyle(.white).font(.system(size: 16, weight: .bold)))
             VStack(alignment: .leading, spacing: 2) {
-                Text(game.title).font(.system(size: 13, weight: .semibold))
+                Text(game.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(selected ? Color.white : game.colors[0])
                 Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
@@ -177,7 +178,9 @@ struct PlutoniumGameView: View {
             Button("Remove everything (engine and Plutonium)", role: .destructive) { state.removeSetup("all") }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(game == .bo1
+            Text(game == .boiii
+                 ? "Black Ops III (Windows) setup: forgets the game folder. The game, boiii.exe and your stats in it are not touched.\n\nEverything: also moves the engine and the Wine prefix (Plutonium, its login and BOIII's identity keys: back up your stats first) to the Trash."
+                 : game == .bo1
                  ? "Black Ops setup: forgets the game folder and moves its shader caches to the Trash (the next visit to each map compiles again).\n\nEverything: also moves the engine and the Wine prefix with Plutonium (and its login) to the Trash, so Black Ops and Black Ops II are both set up again from the start.\n\nYour game folders are not touched."
                  : "Black Ops II setup: forgets the game folder and its mod arguments.\n\nEverything: also moves the engine and the Wine prefix with Plutonium (and its login) to the Trash, so Black Ops and Black Ops II are both set up again from the start.\n\nYour game folders are not touched.")
         }
@@ -208,8 +211,14 @@ struct PlutoniumGameView: View {
                     Button { state.stop() } label: { Label("Stop the game", systemImage: "stop.fill") }
                         .buttonStyle(.bordered).tint(.white)
                 }
-                if let folder = state.folder(for: game) {
-                    Text(folder.path).font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                if game == .boiii {
+                    HStack(spacing: 10) {
+                        Button { state.backupBoiii() } label: { Label("Back Up Stats…", systemImage: "externaldrive.badge.plus") }
+                        Button { state.restoreBoiii() } label: { Label("Restore Stats…", systemImage: "arrow.counterclockwise") }
+                        InfoButton(text: "BOIII keeps your stats, loadouts and save games in the game folder (boiii_players) and the identity the servers know you by in Wine's AppData. Back Up saves both in one zip you can keep, take to another Mac (Restore) or to Windows (boiii_players goes next to boiii.exe, the key files in %LOCALAPPDATA%\\boiii\\user). Keep the zip private: anyone with it can play as you.")
+                    }
+                    .buttonStyle(.bordered).tint(.white)
+                    .disabled(state.running != nil || state.progress != nil)
                 }
             }
         } else {
@@ -280,7 +289,7 @@ struct SetupChecklist: View {
             Text("Set up").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
             Check(done: state.rosettaInstalled, title: "Rosetta 2",
                   detail: "Run in Terminal: softwareupdate --install-rosetta --agree-to-license")
-            Check(done: state.engineInstalled, title: "Black Ops Mac engine",
+            Check(done: state.engineInstalled, title: "BO-Mac engine",
                   detail: "Downloads our engine, built from open source, and adds our patches. About 330 MB.") {
                 Button("Install") { state.installEngine() }.disabled(state.progress != nil)
             }
@@ -399,7 +408,7 @@ struct BO3View: View {
             Button(state.bo3Installed ? "Update" : "Install") { state.installBO3() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Installs BO3 Mac Client, which comes with Black Ops Mac: BO3MacFix goes into your Black Ops III from Steam (Steam's launcher is kept as a backup), and its server browser opens when it is done.")
+            Text("Installs BO3 Mac Client, which comes with BO-Mac: BO3MacFix goes into your Black Ops III from Steam (Steam's launcher is kept as a backup), and its server browser opens when it is done.")
         }
         .task { state.refreshBO3() }
     }
@@ -571,6 +580,16 @@ struct SettingsView: View {
 
     private var form: some View {
         Form {
+            if let folder = state.folder(for: game) {
+                Section("Game folder") {
+                    HStack {
+                        Text(folder.path).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                        Spacer()
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                    }
+                }
+            }
             Section("Play") {
                 TextField("Player name (offline)", text: $name)
                 Picker("Frame-rate cap", selection: $fps) {

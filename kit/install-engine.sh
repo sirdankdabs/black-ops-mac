@@ -1,5 +1,5 @@
 #!/bin/bash
-# Black Ops Mac engine: assemble the Wine engine the games run on.
+# BO-Mac engine: assemble the Wine engine the games run on.
 #
 #   install-engine.sh [--update-x87]
 #
@@ -32,9 +32,9 @@ cx_zip_sha256=8688e0848c4e5f79f1cc351cb52d32447da00c6c00cfd3b4bb2d164d44589a26
 engine="$home/engine"
 downloads="$home/downloads"
 cx_version_wanted=26.3
-engine_version=0.2.1
+engine_version=0.2.2
 engine_url="https://github.com/sirdankdabs/bo-mac/releases/download/engine-$engine_version/black-ops-mac-engine-$engine_version.tar.xz"
-engine_sha=670e99b1a9595c3e602d14255c16c9dc8b293c1527455be959e8f435578eccdc
+engine_sha=728b20a8d3c3e753eb82d3379800d53de31fe393696146de41062650aff2d311
 moltenvk_url=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
 moltenvk_sha=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
 x87_fallback_tag=v1.9.1
@@ -88,7 +88,7 @@ fi
 
 # --- Checks ------------------------------------------------------------------
 step "Checking this Mac"
-[ "$(uname -m)" = arm64 ] || die "Black Ops Mac is for Apple Silicon Macs"
+[ "$(uname -m)" = arm64 ] || die "BO-Mac is for Apple Silicon Macs"
 /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null ||
   die "Rosetta 2 is missing. Install it with: softwareupdate --install-rosetta --agree-to-license"
 mkdir -p "$home" "$downloads"
@@ -99,7 +99,7 @@ rm -rf "$new"
 own=
 archive=${BOM_ENGINE_ARCHIVE:-"$downloads/black-ops-mac-engine-$engine_version.tar.xz"}
 if [ ! -f "$archive" ] || [ "$(sha "$archive")" != "$engine_sha" ]; then
-  step "Downloading the Black Ops Mac engine $engine_version (320 MB)"
+  step "Downloading the BO-Mac engine $engine_version (130 MB)"
   if curl -fL --retry 3 -o "$archive.part" "$engine_url" 2>/dev/null; then mv -f "$archive.part" "$archive"; else rm -f "$archive.part"; fi
 fi
 if [ -f "$archive" ] && [ "$(sha "$archive")" = "$engine_sha" ]; then
@@ -150,7 +150,7 @@ fi
 L="$new/lib/wine"
 
 # --- Our modules ---------------------------------------------------------------
-step "Installing the Black Ops Mac modules"
+step "Installing the BO-Mac modules"
 if [ -z "$own" ]; then   # our engine has it built in
   cp "$kit/payload/x86_64-unix/ntdll.so" "$L/x86_64-unix/ntdll.so"
   codesign -fs - "$L/x86_64-unix/ntdll.so" 2>/dev/null
@@ -171,6 +171,20 @@ for a in i386-windows x86_64-windows; do
 done
 cp "$kit/payload/dxmt/x86_64-unix/winemetal.so" "$L/x86_64-unix/winemetal.so"
 codesign -fs - "$L/x86_64-unix/winemetal.so" 2>/dev/null
+# Media Foundation's video decoders (Black Ops III asks for them, "Windows
+# Media Feature Pack"): winegstreamer with GStreamer 1.24 (LGPL) and its
+# plugins, VideoToolbox's hardware decoder among them. CrossOver has its own.
+if [ -n "$own" ]; then
+  cp "$kit/payload/x86_64-unix/winegstreamer.so" "$L/x86_64-unix/winegstreamer.so"
+  cp "$kit/payload/x86_64-windows/winegstreamer.dll" "$L/x86_64-windows/winegstreamer.dll"
+  cp "$kit/payload/i386-windows/winegstreamer.dll" "$L/i386-windows/winegstreamer.dll"
+  mkdir -p "$new/lib64/gstreamer-1.0"
+  cp "$kit/payload/gstreamer/lib64/"*.dylib "$new/lib64/"
+  cp "$kit/payload/gstreamer/lib64/gstreamer-1.0/"*.dylib "$new/lib64/gstreamer-1.0/"
+  for f in "$L/x86_64-unix/winegstreamer.so" "$new/lib64/"libg*.dylib "$new/lib64/libpcre2-8.0.dylib" "$new/lib64/gstreamer-1.0/"*.dylib; do
+    codesign -fs - "$f" 2>/dev/null
+  done
+fi
 
 step "Installing MoltenVK 1.4.2 with the shader cache"
 fetch "$moltenvk_url" "$downloads/MoltenVK-macos-1.4.2.tar" "$moltenvk_sha"

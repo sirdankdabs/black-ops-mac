@@ -80,3 +80,13 @@ make -j"$(sysctl -n hw.ncpu)" > ../make.log 2>&1 || die "build failed (see $work
 cd ..
 "$root/engine/pack-engine.sh" "$work/obj" "$F" downloads/wine-mono-10.4.1-x86.tar.xz \
   "$root/dist/black-ops-mac-engine-$version.tar.xz"
+
+# winegstreamer (Media Foundation's decoders, kit/payload) is built apart:
+# a second configure of the same source with --with-gstreamer, GStreamer 1.24
+# headers (Homebrew's gstreamer bottle: `brew fetch --force-bottle gstreamer`,
+# include/ only) and CrossOver 26's x86_64 GStreamer libraries (LGPL), then
+# `make dlls/winegstreamer/all`, with -DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_78
+# in GSTREAMER_CFLAGS and engine/glib-once-compat.c linked into winegstreamer.so
+# (the headers are GLib 2.80, the runtime is 2.78). install-engine.sh ships it
+# and the GStreamer runtime (kit/payload/gstreamer), whose libintl proxy is
+# renamed libgstintl.8.dylib so it does not replace the engine's libintl.

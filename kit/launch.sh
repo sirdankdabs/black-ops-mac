@@ -1,6 +1,6 @@
 #!/bin/bash
-# Black Ops Mac: start Black Ops (t5) or Black Ops II (t6) through Plutonium on
-# the Black Ops Mac engine (install-engine.sh) in its prefix (setup-prefix.sh).
+# BO-Mac: start Black Ops (t5) or Black Ops II (t6) through Plutonium on
+# the BO-Mac engine (install-engine.sh) in its prefix (setup-prefix.sh).
 #
 #   launch.sh bo1|bo2 online              Plutonium launcher (sign in, play online)
 #   launch.sh bo1 zombies|campaign|mp [name]   offline (LAN)
@@ -64,8 +64,9 @@ game=${1:-}; mode=${2:-}
 case "$game:$mode" in
   bo1:online|bo1:zombies|bo1:campaign|bo1:mp) dir=${BO1_DIR:-} t=t5 ;;
   bo2:online|bo2:zombies|bo2:mp|bo2:declassified) dir=${BO2_DIR:-} t=t6 ;;
-  boiii:play) dir=${BOIII_DIR:-} t=t7 ;;
-  *) die "usage: launch.sh bo1|bo2 online|zombies|campaign|mp [name], launch.sh boiii play, or launch.sh stop" ;;
+  boiii:play) dir=${BOIII_DIR:-} t=t7 GAME_ARGS=${GAME_ARGS---launch} ;;
+  boiii:launcher) dir=${BOIII_DIR:-} t=t7 ;;
+  *) die "usage: launch.sh bo1|bo2 online|zombies|campaign|mp [name], launch.sh boiii play|launcher, or launch.sh stop" ;;
 esac
 if [ "$t" = t7 ]; then
   [ -n "$dir" ] && [ -f "$dir/boiii.exe" ] || die "the Black Ops III (Windows) folder is not set (or has no boiii.exe)"
@@ -166,7 +167,29 @@ if [ "$t" = t7 ]; then
     if on CAPTURE_DISPLAY; then reg add "HKCU\\Software\\Wine\\AppDefaults\\$exe\\Mac Driver" /v CaptureDisplaysForFullscreen /d y /f
     else reg add "HKCU\\Software\\Wine\\AppDefaults\\$exe\\Mac Driver" /v CaptureDisplaysForFullscreen /d n /f; fi
   done
+  # The game refuses to start unless Steam is installed ("Steam must be
+  # installed for the game to run"), but boiii plays without it: register an
+  # empty Steam folder whose steam.exe does nothing (no Steam, no login).
+  steam="$WINEPREFIX/drive_c/Program Files (x86)/Steam"
+  mkdir -p "$steam"
+  [ -f "$steam/steam.exe" ] || cp "$WINEPREFIX/drive_c/windows/system32/rundll32.exe" "$steam/steam.exe"
+  reg add 'HKCU\Software\Valve\Steam' /v SteamExe /d 'c:/program files (x86)/steam/steam.exe' /f
+  reg add 'HKCU\Software\Valve\Steam' /v SteamPath /d 'c:/program files (x86)/steam' /f
+  reg add 'HKLM\Software\Wow6432Node\Valve\Steam' /v InstallPath /d 'C:\Program Files (x86)\Steam' /f
+  # Prefixes made before the engine had winegstreamer: register it once.
+  sys="$WINEPREFIX/drive_c/windows"
+  if [ ! -f "$sys/system32/winegstreamer.dll" ] && [ -f "$engine/lib/wine/x86_64-windows/winegstreamer.dll" ]; then
+    cp "$engine/lib/wine/x86_64-windows/winegstreamer.dll" "$sys/system32/"
+    cp "$engine/lib/wine/i386-windows/winegstreamer.dll" "$sys/syswow64/" 2>/dev/null
+    "$wine" regsvr32 /s winegstreamer.dll > /dev/null 2>&1
+    "$wine" 'C:\windows\syswow64\regsvr32.exe' /s winegstreamer.dll > /dev/null 2>&1
+  fi
   "$WINESERVER" -w 2>/dev/null
+  # Black Ops III checks for Media Foundation's video decoders ("requires the
+  # Windows Media Feature Pack"): the engine's winegstreamer, with GStreamer
+  # and its plugins (Apple's VideoToolbox decoder among them) in lib64.
+  export GST_PLUGIN_SYSTEM_PATH_1_0="$engine/lib64/gstreamer-1.0" GST_PLUGIN_PATH_1_0= \
+         GST_REGISTRY_1_0="$home/cache/gstreamer-registry.bin"
   # boiii keeps the game's location in AppData\Local\boiii\user\game_path.txt
   # (Windows path, no newline; it guesses Steam's default otherwise): point
   # it at the chosen folder, so the folder never has to be picked in boiii.
@@ -174,7 +197,57 @@ if [ "$t" = t7 ]; then
   mkdir -p "$bdir"
   printf '%s' "Z:${dir//\//\\}" > "$bdir/game_path.txt"
   log="$home/logs/boiii-play.log"
+  # boiii's launcher window is an HTML page in Windows' web browser control
+  # (mshtml, drawn by Wine Gecko): keep it on here
+  export WINEDLLOVERRIDES="mscoree="
   cd "$dir" || exit 1
+  # BlackOps3.start stays behind when the game is stopped from the app, and the
+  # next start would offer Safe Mode (which lowers the graphics settings).
+  rm -f BlackOps3.start
+  # The player name from the app's settings, in boiii's own profile.
+  if [ -n "${3:-}" ] || [ -n "${PLAYER_NAME:-}" ]; then
+    /usr/bin/python3 -I - "$dir/boiii_players/properties.json" "${3:-$PLAYER_NAME}" <<'PY' 2>/dev/null || true
+import json, os, sys
+p, name = sys.argv[1], sys.argv[2]
+d = {}
+if os.path.exists(p):
+    try: d = json.load(open(p))
+    except Exception: d = {}
+d["playerName"] = name
+os.makedirs(os.path.dirname(p), exist_ok=True)
+json.dump(d, open(p, "w"))
+PY
+  fi
+  # First start: the game's auto-detect picks for an unknown GPU (half
+  # resolution, no shadows, no ambient occlusion). Set it up once like BO1 and
+  # BO2 instead: fullscreen at the desktop's size and refresh rate with sync,
+  # full resolution and full detail. Afterwards the game's own options rule.
+  ini="$dir/boiii_players/config.ini"
+  if on BOIII_GRAPHICS && [ ! -f "$dir/boiii_players/.bom-defaults-config.ini" ] && [ -n "${dw:-}" ]; then
+    mkdir -p "$dir/boiii_players"; touch "$ini"
+    ini_set() {   # ini_set key value: replace the line or add it
+      if grep -q "^$1 = " "$ini"; then sed -i '' -E "s|^($1 = )\"[^\"]*\"|\1\"$2\"|" "$ini"
+      else printf '%s = "%s"\n' "$1" "$2" >> "$ini"; fi
+    }
+    ini_set AutoDetectHasRun 1;           ini_set RestrictGraphicsOptions 0
+    ini_set FullScreenMode 1;             ini_set WindowSize "${dw}x${dh}"
+    ini_set RefreshRate "${hz:-60}";      ini_set Vsync 1
+    ini_set ResolutionPercent 100;        ini_set MeshQuality 0
+    ini_set TextureQuality 0;             ini_set TextureFilter 2
+    ini_set DisableDynamicLightShadows 0; ini_set DisableDynamicSunShadows 0
+    ini_set ShadowFiltering 1;            ini_set VolumetricLightingEnabled 1
+    ini_set SSAOTechnique "GTAO Medium Quality"
+    ini_set AATechnique "Filmic SMAA T2x"; ini_set SubsurfaceScattering 1
+    ini_set MotionBlur Off
+    : > "$dir/boiii_players/.bom-defaults-config.ini"
+  fi
+  # Fullscreen: a 1x display mode of the desktop's size while the game runs
+  # (as for BO1/BO2). On a HiDPI desktop the game otherwise switches to the
+  # panel's full pixel size and shows its 1080p picture in one corner.
+  if on DISPLAY_MODE && [ -n "${dw:-}" ] && [ -n "${dh:-}" ]; then
+    "$kit/tools/displaymode" "$dw" "$dh" $$ >> "$home/logs/displaymode.log" 2>&1 &
+    sleep 2   # the switch first: Wine reads the desktop mode as the game starts
+  fi
   # shellcheck disable=SC2086
   exec "$wine" boiii.exe ${GAME_ARGS:-} > "$log" 2>&1
 fi
@@ -220,7 +293,7 @@ common_cvars() {
 if [ "$t" = t5 ]; then
   players="$plutonium/storage/t5/players"
   # DXVK compiles every pipeline in its state cache while a map loads, so fold
-  # in the list that ships with Black Ops Mac (about 19,000 pipelines gathered
+  # in the list that ships with BO-Mac (about 19,000 pipelines gathered
   # on every zombies map: which shader combinations the game uses, nothing
   # hardware-specific) and any an older setup left: then nothing is compiled
   # for the first time mid-game (first shot, first explosion, a new area).
