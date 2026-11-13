@@ -74,7 +74,11 @@ struct ContentView: View {
         .onChange(of: selection) { state.settingsGame = nil; if selection == .bo2c { state.refreshCampaign() } }
         .alert("Something went wrong", isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })) {
             Button("OK") { state.error = nil }
-            Button("Show log") { state.error = nil; showLog = true }
+            // the alert has to finish closing before the sheet can open
+            Button("Show log") {
+                state.error = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showLog = true }
+            }
         } message: {
             Text(state.error ?? "")
         }
@@ -696,19 +700,48 @@ struct LogView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) private var dismiss
 
+    /// The app's own output, then the end of the log file the last error named
+    private var text: String {
+        var parts: [String] = []
+        if !state.log.isEmpty { parts.append(state.log.joined(separator: "\n")) }
+        if let name = state.errorLog {
+            let url = Paths.home.appendingPathComponent(name)
+            if let data = try? Data(contentsOf: url) {
+                let t = String(decoding: data, as: UTF8.self)
+                let lines = t.split(separator: "\n", omittingEmptySubsequences: false).suffix(300)
+                parts.append("— \(name)\n" + (t.isEmpty ? "(empty)" : lines.joined(separator: "\n")))
+            } else {
+                parts.append("— \(name)\n(not found)")
+            }
+        }
+        return parts.isEmpty ? "Nothing logged yet in this session." : parts.joined(separator: "\n\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(state.log.joined(separator: "\n"))
+                    Text(text)
                         .font(.system(size: 11, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .id("end")
+                    Color.clear.frame(height: 1).id("end")
                 }
                 .onAppear { proxy.scrollTo("end", anchor: .bottom) }
             }
-            HStack { Spacer(); Button("Close") { dismiss() }.keyboardShortcut(.defaultAction) }
+            HStack {
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }
+                Button("Open Logs Folder") {
+                    let logs = Paths.home.appendingPathComponent("logs")
+                    try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(logs)
+                }
+                Spacer()
+                Button("Close") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
         }
         .padding()
         .frame(width: 700, height: 440)

@@ -32,9 +32,9 @@ cx_zip_sha256=8688e0848c4e5f79f1cc351cb52d32447da00c6c00cfd3b4bb2d164d44589a26
 engine="$home/engine"
 downloads="$home/downloads"
 cx_version_wanted=26.3
-engine_version=0.2.2
+engine_version=0.2.3
 engine_url="https://github.com/sirdankdabs/bo-mac/releases/download/engine-$engine_version/black-ops-mac-engine-$engine_version.tar.xz"
-engine_sha=728b20a8d3c3e753eb82d3379800d53de31fe393696146de41062650aff2d311
+engine_sha=347d849ab5cf7b2ce33fc1d8fcf51aee97e1ebbcfa1c3b0345e04d9b2640a0bb
 moltenvk_url=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
 moltenvk_sha=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
 # Wine Gecko (WineHQ): draws Windows' HTML control (boiii's launcher)

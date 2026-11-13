@@ -269,7 +269,15 @@ final class AppState: ObservableObject {
     @Published var log: [String] = []
     @Published var progress: String?          // a running setup step
     @Published var running: Game?             // a game started from here
-    @Published var error: String?
+    @Published var error: String? {
+        didSet {
+            // "(see logs/wineboot.log)": the log the error points at, shown under Show log
+            if let e = error, let r = e.range(of: #"logs/[A-Za-z0-9._-]+\.(log|txt)"#, options: .regularExpression) {
+                errorLog = String(e[r])
+            }
+        }
+    }
+    @Published var errorLog: String?          // a file under Paths.home the last error named
     @Published var bo3Latest: String?
     @Published var bo3: [String: String] = [:]   // bo3.sh status: game, state, installed
     @Published var zd: [String: String] = [:]    // zombies-declassified.sh status: installed, latest
