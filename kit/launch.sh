@@ -176,6 +176,14 @@ if [ "$t" = t7 ]; then
   reg add 'HKCU\Software\Valve\Steam' /v SteamExe /d 'c:/program files (x86)/steam/steam.exe' /f
   reg add 'HKCU\Software\Valve\Steam' /v SteamPath /d 'c:/program files (x86)/steam' /f
   reg add 'HKLM\Software\Wow6432Node\Valve\Steam' /v InstallPath /d 'C:\Program Files (x86)\Steam' /f
+  # boiii's launcher is Internet Explorer's browser control (Wine's mshtml,
+  # drawn by Wine Gecko). The prefix is made with mshtml off (Plutonium's
+  # installer), so its HTML document class is not registered and the
+  # launcher stays white: register it once.
+  if ! grep -q '25336920-03F9-11CF-8FD0-00AA00686F13' "$WINEPREFIX/system.reg" 2>/dev/null; then
+    WINEDLLOVERRIDES="mscoree=" "$wine" regsvr32 /s mshtml.dll > /dev/null 2>&1
+    WINEDLLOVERRIDES="mscoree=" "$wine" 'C:\windows\syswow64\regsvr32.exe' /s mshtml.dll > /dev/null 2>&1
+  fi
   # Prefixes made before the engine had winegstreamer: register it once.
   sys="$WINEPREFIX/drive_c/windows"
   if [ ! -f "$sys/system32/winegstreamer.dll" ] && [ -f "$engine/lib/wine/x86_64-windows/winegstreamer.dll" ]; then
@@ -197,8 +205,7 @@ if [ "$t" = t7 ]; then
   mkdir -p "$bdir"
   printf '%s' "Z:${dir//\//\\}" > "$bdir/game_path.txt"
   log="$home/logs/boiii-play.log"
-  # boiii's launcher window is an HTML page in Windows' web browser control
-  # (mshtml, drawn by Wine Gecko): keep it on here
+  # boiii's launcher window: mshtml stays on here
   export WINEDLLOVERRIDES="mscoree="
   cd "$dir" || exit 1
   # BlackOps3.start stays behind when the game is stopped from the app, and the

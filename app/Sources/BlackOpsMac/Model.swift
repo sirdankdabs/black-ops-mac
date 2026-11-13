@@ -75,8 +75,8 @@ extension Game {
         case .bo2: [PlayMode(id: "online", title: "Play Online", symbol: "globe"),
                     PlayMode(id: "zombies", title: "Zombies", symbol: "figure.walk"),
                     PlayMode(id: "mp", title: "Multiplayer", symbol: "person.3.fill")]
-        case .boiii: [PlayMode(id: "play", title: "Play", symbol: "play.fill"),
-                      PlayMode(id: "launcher", title: "BOIII Launcher", symbol: "person.2.fill")]
+        case .boiii: [PlayMode(id: "launcher", title: "Open BOIII", symbol: "play.fill"),
+                      PlayMode(id: "play", title: "Play Directly", symbol: "bolt.fill")]
         default: []
         }
     }

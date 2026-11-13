@@ -199,7 +199,7 @@ struct PlutoniumGameView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     ForEach(modes) { mode in
-                        BigButton(title: mode.title, symbol: mode.symbol, primary: mode.id == "online") {
+                        BigButton(title: mode.title, symbol: mode.symbol, primary: mode.id == "online" || mode.id == "launcher") {
                             state.play(game, mode: mode)
                         }
                         .disabled(state.running != nil || state.progress != nil)

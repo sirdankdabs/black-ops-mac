@@ -39,6 +39,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 ### T7 – BOIII (Windows Version) · Black Ops III for Windows through boiii
 
 - **The Windows game on the BOIII / Ezz community client** ([boiii.exe](https://github.com/Ezz-lol/boiii-free), downloaded from its latest release and checked against its published SHA-256), on our engine with DXMT (Direct3D 11 → Metal).
+- **boiii's launcher works** (friends, player name, Workshop, settings): it is Internet Explorer's browser control, whose HTML document class Wine prefixes made for Plutonium didn't register — so it was a blank white window.
 - **No Steam needed**: the game refuses to start without Steam installed; the app registers an empty Steam folder whose `steam.exe` does nothing, so boiii plays without Steam or a Steam login.
 - **Windows Media Feature Pack check passed**: the engine now has Media Foundation's video decoders (Wine's winegstreamer with GStreamer and Apple's VideoToolbox hardware decoder).
 - **Renders correctly on Metal**: a DXMT fix for the game's upscaling pass (it binds a render target larger than its depth buffer; DXMT dropped those draws and the screen stayed black).
@@ -94,12 +95,12 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
    - **Game folder** → *Choose…* the folder with `BlackOps3.exe`.
    - **Wine prefix** → *Create* (skip if you already play Black Ops / Black Ops II here).
    - **boiii.exe** → *Download* (the latest BOIII / Ezz client, verified, put into the game folder).
-4. Press **Play**. The first start takes a little longer while shaders compile; the game opens fullscreen with full detail.
+4. Press **Open BOIII**: boiii's own launcher opens — set your player name, add friends, browse the Workshop, then press its **PLAY**. (**Play Directly** skips the launcher.) The first start takes a little longer while shaders compile; the game opens fullscreen with full detail.
 5. In the game, pick **Zombies** or **Multiplayer** and use boiii's **server browser** to join community servers, or play solo / with bots.
 6. **Settings** (white button): every fix can be switched off, with an ⓘ for each.
 7. **Back Up Stats…** now and then: your stats live in the game folder and your identity in the Wine prefix — the backup has both. On Windows, put `boiii_players` next to `boiii.exe` and the `key` files in `%LOCALAPPDATA%\boiii\user`.
 
-Your player name comes from the app's **Settings** (Player name). Friends, the server browser and the rest of boiii's features are in the game's own menus. *BOIII Launcher* opens boiii's separate launcher window, which still shows up blank under Wine (known issue): **Play** goes straight into the game.
+**Play Directly** uses the player name from the app's **Settings**.
 
 ## The engine
 
