@@ -6,6 +6,9 @@
 #   uninstall.sh bo1    forget the Black Ops folder; its shader caches go
 #   uninstall.sh bo2    forget the Black Ops II folder
 #   uninstall.sh boiii  forget the Black Ops III (Windows) folder
+#   uninstall.sh bo2c   Black Ops II campaign: its own prefix with Windows
+#                       Steam (and the sign-in) and what BO-Mac put in the
+#                       game folder; the game itself stays
 #   uninstall.sh all    the engine, the Wine prefix (Plutonium and its login),
 #                       caches, logs and settings: Black Ops and Black Ops II
 #                       both start from the beginning (Black Ops III untouched)
@@ -50,6 +53,21 @@ boiii)
   forget BOIII_DIR
   step "Black Ops III (Windows) can be set up again"
   ;;
+bo2c)
+  WINEPREFIX="$home/prefix-bo2c" "$home/engine/bin/wineserver" -k 2>/dev/null
+  step "Removing the Black Ops II campaign setup"
+  g=$(sed -n 's/^BO2C_DIR=//p' "$home/settings.conf" 2>/dev/null | tail -1)
+  if [ -n "$g" ] && [ -d "$g" ]; then
+    rm -f "$g/steam_appid.txt"
+    if [ -f "$g/players/.bom-defaults-hardware" ]; then
+      trash "$g/players/hardware.chp"; rm -f "$g/players/.bom-defaults-hardware"
+    fi
+  fi
+  forget BO2C_DIR
+  trash "$home/prefix-bo2c"
+  trash "$home/campaign"
+  step "The campaign can be set up again"
+  ;;
 bo2)
   stop_games
   step "Removing the Black Ops II setup"
@@ -93,6 +111,6 @@ bo3)
   step "BO3 Mac Client removed"
   ;;
 *)
-  die "usage: uninstall.sh bo1 | bo2 | boiii | all | bo3"
+  die "usage: uninstall.sh bo1 | bo2 | bo2c | boiii | all | bo3"
   ;;
 esac

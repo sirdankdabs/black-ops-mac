@@ -449,12 +449,13 @@ final class AppState: ObservableObject {
     /// uninstall.sh: "bo1", "bo2", "all" (engine and Plutonium too) or "bo3".
     func removeSetup(_ what: String) {
         let titles = ["bo1": "Removing the Black Ops setup", "bo2": "Removing the Black Ops II setup",
-                      "all": "Removing the engine and Plutonium", "bo3": "Removing BO3 Mac Client"]
+                      "all": "Removing the engine and Plutonium", "bo3": "Removing BO3 Mac Client",
+                      "bo2c": "Removing the campaign setup"]
         running = nil
         runScript("uninstall.sh", [what], title: titles[what] ?? "Removing") { [weak self] in
             guard let self else { return }
             self.settings = Settings.load()
-            self.refreshBO3()
+            self.refreshBO3(); self.refreshCampaignSteam()
         }
     }
 

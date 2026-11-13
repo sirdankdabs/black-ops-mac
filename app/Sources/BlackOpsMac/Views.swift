@@ -179,7 +179,9 @@ struct PlutoniumGameView: View {
             Button("Remove everything (engine and Plutonium)", role: .destructive) { state.removeSetup("all") }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(game == .boiii
+            Text(game == .bo2c
+                 ? "Campaign setup: moves its own Wine prefix with Steam for Windows (and your sign-in there) to the Trash and forgets the game folder. The game files stay.\n\nEverything: also moves the engine and the Plutonium prefix to the Trash."
+                 : game == .boiii
                  ? "Black Ops III (Windows) setup: forgets the game folder. The game, boiii.exe and your stats in it are not touched.\n\nEverything: also moves the engine and the Wine prefix (Plutonium, its login and BOIII's identity keys: back up your stats first) to the Trash."
                  : game == .bo1
                  ? "Black Ops setup: forgets the game folder and moves its shader caches to the Trash (the next visit to each map compiles again).\n\nEverything: also moves the engine and the Wine prefix with Plutonium (and its login) to the Trash, so Black Ops and Black Ops II are both set up again from the start.\n\nYour game folders are not touched."
