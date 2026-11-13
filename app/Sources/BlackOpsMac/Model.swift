@@ -24,7 +24,7 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: "Plutonium · Zombies, Campaign, Multiplayer"
         case .bo2: "Plutonium · Zombies, Multiplayer"
-        case .bo2c: "Steam · Campaign"
+        case .bo2c: "Offline · Campaign · no Steam"
         case .bo3: "Native Mac game · community servers"
         case .boiii: "BOIII · Ezz community servers"
         case .waw: "Plutonium · Zombies, Campaign, Multiplayer"
@@ -111,7 +111,7 @@ extension Patch {
         // Both games
         Patch(key: "X87", title: "x87 acceleration",
               info: "Runs the games' old x87 floating-point maths as native ARM code with athei's x87sidecar (based on Lifeisawful's rosettax87), instead of Rosetta's slow emulation. The biggest frame-rate gain.",
-              games: [.waw, .bo1, .bo2, .bo2c]),
+              games: [.waw, .bo1, .bo2]),
         Patch(key: "EXEC_ON_DEMAND", title: "Fast code execution",
               info: "Plutonium turns off DEP, so Wine would make the game's whole memory executable at once, which makes Rosetta re-check it constantly (BO2 ran in slow motion). Our engine makes each page executable only when it is first run.",
               games: [.waw, .bo1, .bo2, .bo2c, .boiii]),
@@ -285,7 +285,7 @@ final class AppState: ObservableObject {
             running = settings["LAST_GAME"].flatMap(Game.init(rawValue:)) ?? .bo1
             watchUntilStopped()
         }
-        refreshCampaignSteam()
+        refreshCampaign()
     }
 
     // Statuses
@@ -348,9 +348,10 @@ final class AppState: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         runScript("boiii.sh", ["restore", url.path], title: "Restoring your BOIII stats")
     }
-    /// Black Ops II's campaign: Windows Steam in its own prefix (bo2-campaign.sh)
-    @Published var campaignSteam: [String: String] = [:]
-    func refreshCampaignSteam() {
+    /// Black Ops II's campaign: the game folder made Steam-free by
+    /// bo2-campaign.sh (Steam-free: t6sp.exe runs directly)
+    @Published var campaign: [String: String] = [:]
+    func refreshCampaign() {
         Task.detached {
             var d: [String: String] = [:]
             for line in Self.capture("bo2-campaign.sh", ["status"]).split(separator: "\n") {
@@ -358,23 +359,18 @@ final class AppState: ObservableObject {
                 if p.count == 2 { d[String(p[0])] = String(p[1]) }
             }
             let result = d
-            await MainActor.run { self.campaignSteam = result }
+            await MainActor.run { self.campaign = result }
         }
     }
-    func setupCampaignSteam() {
-        runScript("bo2-campaign.sh", ["setup"], title: "Installing Steam for the campaign") { [weak self] in self?.refreshCampaignSteam() }
-    }
-    func openCampaignSteam() {
-        runScript("bo2-campaign.sh", ["steam"], title: nil) { [weak self] in self?.watchCampaignSignIn() }
-    }
-    /// Sign-in happens in Steam's own window: check every few seconds for a while.
-    private func watchCampaignSignIn() {
-        Task { @MainActor in
-            for _ in 0..<120 {
-                refreshCampaignSteam()
-                if campaignSteam["signedin"] == "yes" { break }
-                try? await Task.sleep(for: .seconds(5))
-            }
+    /// Removes SteamStub from t6sp.exe (a backup is kept) and sets the game
+    /// folder up to run without Steam. Only the game folder is touched.
+    func prepareCampaign() {
+        guard let folder = settings["BO2C_DIR"] else {
+            error = "Choose the Black Ops II game folder first."
+            return
+        }
+        runScript("bo2-campaign.sh", ["patch", folder], title: "Preparing the campaign (no Steam)") { [weak self] in
+            self?.refreshCampaign()
         }
     }
     func createEmptyPrefix() { runScript("setup-prefix.sh", ["init"], title: "Creating the Wine prefix") }
@@ -383,7 +379,7 @@ final class AppState: ObservableObject {
         switch game {
         case .waw, .bo1, .bo2: engineInstalled && prefixReady && plutoniumInstalled && folder(for: game) != nil
         case .boiii: engineInstalled && prefixReady && folder(for: game) != nil && boiiiInstalled
-        case .bo2c: engineInstalled && campaignSteam["steam"] == "installed" && folder(for: game) != nil
+        case .bo2c: engineInstalled && folder(for: game) != nil && campaign["ready"] == "yes"
         case .bo3: bo3Installed
         }
     }
@@ -407,20 +403,7 @@ final class AppState: ObservableObject {
         settings[key] = url.path
         settings.save()
         refreshToken += 1
-        if game == .bo2c { startCampaignSteam() }
-    }
-
-    /// The campaign's Steam, started in the background (signs in by itself
-    /// once you have signed in): the game starts without waiting for it.
-    func startCampaignSteam() {
-        guard campaignSteam["steam"] == "installed" || FileManager.default.fileExists(atPath:
-                Paths.prefix.deletingLastPathComponent().appendingPathComponent("prefix-bo2c/drive_c/Program Files (x86)/Steam/Steam.exe").path) else { return }
-        let folder = settings["BO2C_DIR"]
-        Task.detached {
-            if let folder { _ = Self.capture("bo2-campaign.sh", ["library", folder]) }
-            _ = Self.capture("bo2-campaign.sh", ["steam", "-silent"])
-            await MainActor.run { self.refreshCampaignSteam() }
-        }
+        if game == .bo2c { refreshCampaign() }
     }
 
     func installEngine() { runScript("install-engine.sh", [], title: "Installing the engine") }
@@ -462,7 +445,7 @@ final class AppState: ObservableObject {
         runScript("uninstall.sh", [what], title: titles[what] ?? "Removing") { [weak self] in
             guard let self else { return }
             self.settings = Settings.load()
-            self.refreshBO3(); self.refreshCampaignSteam()
+            self.refreshBO3(); self.refreshCampaign()
         }
     }
 
@@ -504,10 +487,9 @@ final class AppState: ObservableObject {
         settings.save()
         let name = settings["PLAYER_NAME"] ?? "Player"
         runScript("launch.sh", [game.rawValue, mode.id, name], title: nil) { [weak self] in
-            // The campaign's launch waits for the game itself (its Steam
-            // stays open). The Plutonium launcher may exit while the game it
-            // started keeps running: the game is over when the engine's Wine is.
-            if game == .bo2c { self?.running = nil } else { self?.watchUntilStopped() }
+            // The Plutonium launcher may exit while the game it started
+            // keeps running: the game is over when the engine's Wine is.
+            self?.watchUntilStopped()
         }
     }
 
@@ -519,7 +501,6 @@ final class AppState: ObservableObject {
 
     /// Wine processes running from our engine.
     nonisolated static var engineRunning: Bool {
-        // the campaign's Steam stays open in the background: not a game
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         p.arguments = ["-fl", Paths.engine.path + "/"]

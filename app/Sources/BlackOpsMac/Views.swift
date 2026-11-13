@@ -71,8 +71,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: state.settingsGame)
-        .onChange(of: selection) { state.settingsGame = nil; if selection == .bo2c { state.startCampaignSteam() } }
-        .onAppear { if selection == .bo2c { state.startCampaignSteam() } }
+        .onChange(of: selection) { state.settingsGame = nil; if selection == .bo2c { state.refreshCampaign() } }
         .alert("Something went wrong", isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })) {
             Button("OK") { state.error = nil }
             Button("Show log") { state.error = nil; showLog = true }
@@ -177,7 +176,7 @@ struct PlutoniumGameView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(game == .bo2c
-                 ? "Campaign setup: moves its own Wine prefix with Steam for Windows (and your sign-in there) to the Trash and forgets the game folder. The game files stay.\n\nEverything: also moves the engine and the Plutonium prefix to the Trash."
+                 ? "Campaign setup: puts the original t6sp.exe back (from t6sp.exe.steam) and moves the campaign's Wine prefix to the Trash. Your game files stay.\n\nEverything: also moves the engine and the Plutonium prefix to the Trash."
                  : game == .boiii
                  ? "Black Ops III (Windows) setup: forgets the game folder. The game, boiii.exe and your stats in it are not touched.\n\nEverything: also moves the engine and the Wine prefix (Plutonium, its login and BOIII's identity keys: back up your stats first) to the Trash."
                  : game == .waw
@@ -214,7 +213,7 @@ struct PlutoniumGameView: View {
                         .buttonStyle(.bordered).tint(.white)
                 }
                 if game == .bo2c {
-                    Label("Experimental. Steam for Windows doesn't draw its windows under Wine on macOS: the first time, its sign-in window is an empty black box. Click inside it (the user name field has the focus), type your user name, press Tab, your password, Enter, and approve Steam Guard on your phone if asked. You only do this once.", systemImage: "exclamationmark.triangle.fill")
+                    Label("No Steam: Play Campaign starts t6sp.exe directly.", systemImage: "checkmark.seal.fill")
                         .font(.system(size: 11)).foregroundStyle(.white.opacity(0.85))
                         .frame(maxWidth: 560, alignment: .leading)
                 }
@@ -302,15 +301,15 @@ struct SetupChecklist: View {
             }
             Check(done: state.folder(for: game) != nil, title: "\(game.title) game folder",
                   detail: game == .boiii ? "The Windows game's folder, with BlackOps3.exe and zone/ inside."
-                        : game == .bo2c ? "Your Steam copy's folder, with t6sp.exe inside (e.g. Steam/steamapps/common/Call of Duty Black Ops II). Downloaded with the Mac Steam app is fine."
+                        : game == .bo2c ? "Your Black Ops II folder, with t6sp.exe and zone/ inside (it can be anywhere: copied from a PC, an external drive, the Mac Steam app's folder…)."
                         : "The folder with zone/ and plutonium.exe inside.") {
                 Button("Choose…") { state.chooseFolder(for: game) }
             }
             if game == .bo2c {
-                Check(done: state.campaignSteam["steam"] == "installed", title: "Steam for Windows (campaign only)",
-                      detail: "The campaign's Steam DRM needs the Steam client. Installs Valve's Steam for Windows in the campaign's own Wine prefix (the other games are not touched). The first time you play, Steam opens to sign in; it remembers you after that.") {
-                    Button("Install") { state.setupCampaignSteam() }
-                        .disabled(!state.engineInstalled || state.progress != nil)
+                Check(done: state.campaign["ready"] == "yes", title: "Steam-free campaign",
+                      detail: "Runs directly from t6sp.exe.") {
+                    Button("Prepare") { state.prepareCampaign() }
+                        .disabled(!state.engineInstalled || state.folder(for: game) == nil || state.progress != nil)
                 }
             } else if game == .boiii {
                 Check(done: state.prefixReady, title: "Wine prefix",

@@ -48,11 +48,12 @@ if [ -f "$home/settings.conf" ]; then
 fi
 engine="$home/engine"
 export WINEPREFIX="$home/prefix" CX_ROOT="$engine" WINESERVER="$engine/bin/wineserver"
-# Black Ops II's campaign has its own prefix, with Windows Steam (bo2-campaign.sh)
+# Black Ops II's campaign has its own prefix; its game folder was made
+# Steam-free by bo2-campaign.sh (no Steam runs in it)
 if [ "${1:-}" = bo2c ]; then
   export WINEPREFIX="$home/prefix-bo2c"
-  # its Steam stays open: its Wine server runs through a link outside the
-  # engine folder, so the app doesn't count it as a game running
+  # its Wine server runs through a link outside the engine folder, so the app
+  # doesn't count the campaign's prefix as a game running
   mkdir -p "$home/campaign"; ln -sfn "$engine/bin/wineserver" "$home/campaign/wineserver"
   export WINESERVER="$home/campaign/wineserver"
 fi
@@ -84,7 +85,7 @@ else
   [ -n "$dir" ] && [ -d "$dir/zone" ] || die "the $game game folder is not set (or has no zone folder)"
   [ "$t" != t6c ] || [ -f "$dir/t6sp.exe" ] || die "the Black Ops II campaign folder has no t6sp.exe"
 fi
-[ "$t" = t6c ] || stop_all   # the campaign keeps its Steam signed in
+stop_all
 
 # --- Environment for the games ---------------------------------------------
 # Plutonium starts the games with an environment built from HKCU\Environment.
@@ -94,10 +95,12 @@ clear_env() { unset "$1"; reg delete 'HKCU\Environment' /v "$1" /f; }
 
 read -r dw dh hz < <("$kit/tools/displaymode" current 2>/dev/null || true)
 maxfps=${MAXFPS:-${hz:-0}}
-if [ "${X87:-1}" = 1 ] && [ -x "$engine/bin/x87sidecar" ]; then
+if [ "${X87:-1}" = 1 ] && [ -x "$engine/bin/x87sidecar" ] && [ "$t" != t6c ]; then
   set_env X87_SIDECAR_PATH "$engine/bin/x87sidecar"
-  if [ "$t" = t6c ]; then set_env X87_SIDECAR_PROGRAMS t6sp.exe; else set_env X87_SIDECAR_PROGRAMS plutonium-bootstrapper-win32.exe; fi
+  set_env X87_SIDECAR_PROGRAMS plutonium-bootstrapper-win32.exe
 else
+  # The campaign's t6sp.exe crashes under the x87 sidecar, so it always runs
+  # without it (Rosetta's own x87 emulation is exact, if slower).
   clear_env X87_SIDECAR_PATH; clear_env X87_SIDECAR_PROGRAMS
 fi
 on() { [ "${!1:-1}" != 0 ]; }   # a patch is on unless set to 0
@@ -170,25 +173,24 @@ if [ -d "$wdesk" ] && [ ! -L "$wdesk" ]; then
 fi
 [ -e "$WINEPREFIX/dosdevices/h:" ] || ln -s "$HOME" "$WINEPREFIX/dosdevices/h:"
 
-# --- Black Ops II's campaign (t6sp.exe, Steam copy) --------------------------------
+# --- Black Ops II's campaign (t6sp.exe, no Steam) ----------------------------------
 # Same Direct3D 11 -> Metal setup as Black Ops II through Plutonium (DXMT,
-# background pipelines, frame pacing, set above), in its own prefix where
-# Windows Steam is signed in: the game's Steam DRM needs it running.
+# background pipelines, frame pacing, set above). The game folder was made
+# Steam-free by bo2-campaign.sh (Steamless + the Redacted Steam API), so
+# t6sp.exe starts directly: no Steam, no sign-in.
 if [ "$t" = t6c ]; then
   if on CAPTURE_DISPLAY; then reg add 'HKCU\Software\Wine\AppDefaults\t6sp.exe\Mac Driver' /v CaptureDisplaysForFullscreen /d y /f
   else reg add 'HKCU\Software\Wine\AppDefaults\t6sp.exe\Mac Driver' /v CaptureDisplaysForFullscreen /d n /f; fi
   camp="$kit/bo2-campaign.sh"
-  bash "$camp" library "$dir" || exit 1
-  # started from here rather than from Steam's library: tell the Steam API which game it is
-  [ -f "$dir/steam_appid.txt" ] || printf '202970' > "$dir/steam_appid.txt"
+  bash "$camp" check "$dir" || exit 1
   # a hardware profile made on an Apple GPU (fullscreen 1920x1080), once, as for BO2
   if on BO2_HW_PROFILE && [ ! -f "$dir/players/.bom-defaults-hardware" ]; then
     mkdir -p "$dir/players"
     cp "$kit/payload/bo2/hardware.chp" "$dir/players/hardware.chp" && : > "$dir/players/.bom-defaults-hardware"
   fi
   start_game() { (cd "$dir" && "$wine" t6sp.exe >> "$home/logs/bo2c-play.log" 2>&1 &); }
-  # The game is running when a t6sp.exe works the CPU (one that only shows a
-  # Steam error, or hands the start to Steam and quits, doesn't): its pid
+  # The game is running when t6sp.exe works the CPU (a start that only shows
+  # an error dialog and quits does not).
   game_running() {  # game_running <seconds>
     local pid cpu
     for _ in $(seq 1 "$1"); do
@@ -201,27 +203,11 @@ if [ "$t" = t6c ]; then
     return 1
   }
   : > "$home/logs/bo2c-play.log"
-  # t6sp.exe first: with Steam open and signed in, the game just starts
   start_game
-  game_pid=$(game_running 40)
-  if [ -z "$game_pid" ]; then
-    # Steam didn't take it (not open, not signed in yet, or a Steam error):
-    # close that attempt, get Steam ready (its window opens to sign in the
-    # first time; after that it signs in by itself) and start the game again
-    pkill -f 't6sp\.exe'; sleep 1
-    if bash "$camp" status | grep -q '^signedin=yes'; then
-      bash "$camp" steam -silent || exit 1
-    else
-      bash "$camp" show || exit 1
-    fi
-    bash "$camp" wait || exit 1
-    start_game
-    game_pid=$(game_running 90) || die "the campaign did not start (see logs/bo2c-play.log)"
-  fi
+  game_pid=$(game_running 120) || die "the campaign did not start (see logs/bo2c-play.log)"
   if on DISPLAY_MODE && [ -n "${dw:-}" ] && [ -n "${dh:-}" ]; then
     "$kit/tools/displaymode" "$dw" "$dh" "$game_pid" >> "$home/logs/displaymode.log" 2>&1 &
   fi
-  # the game may hand itself to Steam's own start: follow whichever t6sp.exe runs
   while pgrep -f 't6sp\.exe' >/dev/null; do sleep 2; done
   exit 0
 fi

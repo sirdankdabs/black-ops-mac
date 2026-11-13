@@ -31,13 +31,14 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Starts fullscreen at 1920×1080** with anti-aliasing Apple GPUs support (it otherwise opened in a small 800×600 window).
 - **Zombies Declassified** built in — Black Ops II's unreleased "DLC 5" (Nacht der Untoten, Verrückt, Shi No Numa, Der Riese, Kino der Toten, "Five", Ascension, Shangri-La, Moon): one-click install with the mod's own verified installer, a **Declassified** play button, file check and remove.
 
-### T6 – BOII (Campaign, Experimental) · Black Ops II's campaign from Steam
+### T6 – BOII (Campaign, Experimental) · Black Ops II's campaign, no Steam
 
-- **The campaign of your Steam copy** (`t6sp.exe`; Plutonium has no campaign), with the same Direct3D 11 → Metal setup as Black Ops II: DXMT, background pipelines, frame pacing, x87 acceleration, controller fixes.
-- **Your game folder can be anywhere**: choose it (downloaded with the Mac Steam app, copied from a PC, on an external drive…). BO-Mac shows it to Steam through a library of its own.
-- **Windows Steam in its own Wine prefix** (the game's Steam DRM needs it), separate from every other game; its in-game overlay is off. The first time you press **Play Campaign**, Steam opens to sign in and the game starts once you have; after that, Steam starts in the background and signs in by itself.
+- **The campaign of your own copy** (`t6sp.exe`; Plutonium has no campaign), with the same Direct3D 11 → Metal setup as Black Ops II: DXMT, background pipelines, frame pacing, controller fixes.
+- **No Steam and no sign-in**: *Prepare* removes Steam's wrapper (SteamStub) from `t6sp.exe` with Steamless (atom0s) — the original stays beside it as `t6sp.exe.steam` — and points the game at the Redacted Steam API files already in the game folder. Nothing is downloaded and Windows Steam is not installed.
+- **Only the game folder is touched**, and *Remove setup* puts the original `t6sp.exe` back. Your game folder can be anywhere: copied from a PC, an external drive, or the Mac Steam app's folder.
 - **Starts fullscreen at 1920×1080** (an Apple-GPU hardware profile, once), with a 1x display mode while the game runs.
-- **Known issue — Steam's window is black.** Steam for Windows doesn't draw its windows under Wine on macOS: the sign-in window shows up as an empty black box. Signing in still works if you type blind: click inside the black window (the user name field has the focus), type your user name, press **Tab**, type your password, press **Enter**, and approve Steam Guard on your phone if asked. You only do this once.
+- **Requirements**: the folder needs the **FIX REDACTED `steam_api.dll`** (the build that works offline) next to `t6sp.exe`. BO-Mac does not include it. Redacted repacks' `steam_api.dll_zmp` is the multiplayer/zombies build and crashes the campaign; *Prepare* uses a copy kept as `steam_api.dll.redacted` when there is one, and refuses the multiplayer build with a clear message. The campaign runs without the x87 accelerator (it crashes under it), on Rosetta's own x87 emulation.
+- **Redacted repacks** (2017): some ship a packed `t6sp.exe` (a `.conceal` section) that crashes under Wine, and a `Plugins` folder (OpenNet, ZonePlugin) that crashes the campaign. Put the Steam copy's `t6sp.exe` in that folder; *Prepare* sets the plugins aside (they go back with *Remove setup*).
 
 ### T7 – BOIII (Mac Version) · Black Ops III from Steam
 
@@ -98,7 +99,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
    - **World at War / Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
    - **Black Ops III**: Once the game is installed through Steam, click *Install* → the server browser will open. From there, select any server you want to join, and the game will launch automatically. Once the game opens, navigate to the corresponding game mode (e.g., Zombies), and you'll automatically join the selected server. Alternatively, you can launch the game directly through Steam to join Steam servers or open the server browser separately to connect to community servers.
 
-   - **T6 – BOII (Campaign)**: *Install* Steam for Windows → *Choose…* your game folder (wherever it is) → **Play Campaign**. The first time, Steam opens to sign in (the window may stay black: click it, type your user name, Tab, password, Enter; approve Steam Guard on your phone).
+   - **T6 – BOII (Campaign)**: *Choose…* your game folder (wherever it is) → **Prepare** (removes Steam's wrapper from `t6sp.exe` and switches Redacted to offline) → **Play Campaign**. No Steam, no sign-in.
    - **Black Ops III (Windows Version)** — see below.
 
 4. The first time you load a Black Ops map, the loading screen will remain visible while all shaders are compiled (up to about a minute). Subsequent loads will be much faster.
@@ -141,7 +142,7 @@ kit/                 what the app runs (also usable from Terminal)
   launch.sh            starts a game with every patch (settings.conf switches)
   bo3.sh               BO3 Mac Client install / open / Steam / ranked spoofing
   boiii.sh             boiii.exe download (verified) and stats backup / restore
-  bo2-campaign.sh      BO2 campaign: Windows Steam in its own prefix, library, sign-in wait
+  bo2-campaign.sh      BO2 campaign: Steamless + the Redacted Steam API, no Steam
   zombies-declassified.sh   the BO2 mod (via its own verified installer)
   uninstall.sh         remove a game's setup (to the Trash)
   prepare-shaders.sh   optional: compile every BO1 map ahead of time
@@ -164,6 +165,8 @@ build-app.sh         builds dist/BO-Mac.app
 - **Khronos / MoltenVK** contributors.
 - **Logo-2K** — [Zombies Declassified](https://github.com/Logo-2K/zombies-declassified).
 - **BO3 Mac Client** (included in `bo3/` and `kit/payload/bo3`), built on **BO3MacFix** by Emma / InvoxiPlayGames and Anthony / serious, with **T7Patch** work by its authors; the community server project behind `master.ezz.lol`.
+- **atom0s** — [Steamless](https://github.com/atom0s/Steamless), which removes Steam's wrapper from the campaign's `t6sp.exe` (CC BY-NC-ND 4.0; licence text in `kit/payload/steamless/`).
+- **redacted.se** — the Redacted Steam API that lets Black Ops II's campaign run offline (not included; use your own copy).
 - **Ezz / BOIII** — [boiii-free](https://github.com/Ezz-lol/boiii-free), the community client for the Windows version (downloaded from its latest release), built on momo5502's BOIII.
 - **GStreamer** contributors.
 

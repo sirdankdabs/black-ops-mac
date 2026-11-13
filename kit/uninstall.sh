@@ -7,9 +7,9 @@
 #   uninstall.sh bo1    forget the Black Ops folder; its shader caches go
 #   uninstall.sh bo2    forget the Black Ops II folder
 #   uninstall.sh boiii  forget the Black Ops III (Windows) folder
-#   uninstall.sh bo2c   Black Ops II campaign: its own prefix with Windows
-#                       Steam (and the sign-in) and what BO-Mac put in the
-#                       game folder; the game itself stays
+#   uninstall.sh bo2c   Black Ops II campaign: puts the original t6sp.exe
+#                       back and removes its Wine prefixes; the game itself
+#                       and the Redacted steam_api.dll stay
 #   uninstall.sh all    the engine, the Wine prefix (Plutonium and its login),
 #                       caches, logs and settings: Black Ops and Black Ops II
 #                       both start from the beginning (Black Ops III untouched)
@@ -65,13 +65,21 @@ bo2c)
   step "Removing the Black Ops II campaign setup"
   g=$(sed -n 's/^BO2C_DIR=//p' "$home/settings.conf" 2>/dev/null | tail -1)
   if [ -n "$g" ] && [ -d "$g" ]; then
+    if [ -f "$g/t6sp.exe.steam" ]; then
+      step "Putting the original t6sp.exe back"
+      mv -f "$g/t6sp.exe.steam" "$g/t6sp.exe"
+    fi
     rm -f "$g/steam_appid.txt"
+    if [ -d "$g/Plugins.campaign-off" ] && [ ! -d "$g/Plugins" ]; then
+      mv "$g/Plugins.campaign-off" "$g/Plugins"
+    fi
     if [ -f "$g/players/.bom-defaults-hardware" ]; then
       trash "$g/players/hardware.chp"; rm -f "$g/players/.bom-defaults-hardware"
     fi
   fi
   forget BO2C_DIR
   trash "$home/prefix-bo2c"
+  trash "$home/prefix-steamless"
   trash "$home/campaign"
   step "The campaign can be set up again"
   ;;
