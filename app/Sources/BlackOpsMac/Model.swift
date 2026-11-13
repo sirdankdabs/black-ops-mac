@@ -123,7 +123,7 @@ extension Patch {
               games: [.waw, .bo1, .bo2]),
         Patch(key: "CONSOLE_AIM", title: "Console controller aim",
               info: "Makes the controller aim like on the consoles: turn acceleration, the console's turn speeds (slower up/down and while aiming down sights) and aim assist (slowdown and lock-on over targets). Applies to zombies, campaign and multiplayer; mouse aim is not affected.",
-              games: [.waw, .bo1, .bo2]),
+              games: [.waw, .bo1, .bo2, .bo2c]),
         Patch(key: "CAPTURE_DISPLAY", title: "Direct fullscreen",
               info: "In fullscreen the game takes over the display, so macOS shows its frames directly instead of compositing them with the desktop: lower latency and steadier frame times.",
               games: [.waw, .bo1, .bo2, .bo2c, .boiii]),

@@ -29,6 +29,8 @@ Choose your game folder, press Install, press Play. Best on macOS 15 Sequoia or 
 - **Online through Plutonium and offline** — Zombies and Multiplayer.
 - **160 FPS on an M1 Pro** (capped at the display's refresh rate) instead of ~86 FPS in slow motion: Direct3D 11 runs on Metal through DXMT, with background pipeline compilation and frame pacing.
 - **Starts fullscreen at 1920×1080** with anti-aliasing Apple GPUs support (it otherwise opened in a small 800×600 window).
+- **Anti-aliasing: 4x MSAA at most.** Apple GPUs do not support 8x MSAA. If you pick 8x in the game's options, BO-Mac renders it at 4x instead (before, the game froze), so there is no point choosing more than 4x.
+- **Depth of field: Medium recommended.** On High, the blur while aiming down sights is one of the game's heaviest effects and can make the frame rate drop (the GPU runs at 100%), especially together with anti-aliasing. Medium keeps the blur and stays smooth.
 - **Zombies Declassified** built in — Black Ops II's unreleased "DLC 5" (Nacht der Untoten, Verrückt, Shi No Numa, Der Riese, Kino der Toten, "Five", Ascension, Shangri-La, Moon): one-click install with the mod's own verified installer, a **Declassified** play button, file check and remove.
 
 ### T6 – BOII (Campaign, Offline) · Black Ops II's campaign, no Steam

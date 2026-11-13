@@ -96,16 +96,29 @@ stop_all
 # - Until the game ends, not this script: in online mode this process becomes
 #   Plutonium's launcher, which closes as soon as it has started the game.
 held_1x=
+# A display mode held for an earlier launch (the game closed to start another
+# mode) restores the desktop's mode when it ends, which can land after this
+# launch switched to 1x and undo it: end it first and let it restore.
+stop_displaymode() {
+  pkill -TERM -f '/tools/displaymode [0-9]' 2>/dev/null || return 0
+  local i
+  for i in $(seq 25); do pgrep -qf '/tools/displaymode [0-9]' || return 0; sleep 0.2; done
+}
+# Direct fullscreen: the fullscreen window mode (2) becomes fullscreen (1)
+fullscreen_cfg() { [ "${CAPTURE_DISPLAY:-1}" != 0 ] && [ -f "$1" ] && sed -i '' 's/^seta r_fullscreen "2"/seta r_fullscreen "1"/' "$1"; return 0; }
 hold_1x() { # <game cfg>
-  [ -z "$held_1x" ] && [ "${DISPLAY_MODE:-1}" != 0 ] && [ -f "$1" ] &&
-    grep -qE '^seta r_fullscreen "[12]"' "$1" || return 0
-  local res log="$home/logs/displaymode.log" size i launch_pid=$$
-  res=$(sed -n -E 's/^seta r_mode "([0-9]+)x([0-9]+)"/\1 \2/p' "$1")
-  [ -n "$res" ] || return 0
+  fullscreen_cfg "$1"
+  [ -f "$1" ] && grep -qE '^seta r_fullscreen "[12]"' "$1" || return 0
+  hold_1x_size "$(sed -n -E 's/^seta r_mode "([0-9]+)x([0-9]+)"/\1 \2/p' "$1")"
+}
+hold_1x_size() { # "<width> <height>"
+  [ -z "$held_1x" ] && [ "${DISPLAY_MODE:-1}" != 0 ] && [ -n "$1" ] || return 0
+  local res=$1 log="$home/logs/displaymode.log" size i launch_pid=$$
   ( while kill -0 "$launch_pid" 2>/dev/null; do sleep 2; done
     sleep 3   # the launcher may close a moment before the game window is up
-    while pgrep -qf 'plutonium-bootstrapper-win32\.exe'; do sleep 2; done
+    while pgrep -qf 'plutonium-bootstrapper-win32\.exe|t6sp\.exe'; do sleep 2; done
   ) > /dev/null 2>&1 &
+  stop_displaymode
   size=$(stat -f %z "$log" 2>/dev/null || echo 0)
   # shellcheck disable=SC2086
   "$kit/tools/displaymode" $res $! >> "$log" 2>&1 &
@@ -115,7 +128,24 @@ hold_1x() { # <game cfg>
     sleep 0.2
   done
 }
+# Controller aim as on the consoles: turn acceleration, the console turn
+# rates (260/90 degrees/s left-right/up-down, 90/55 aiming down sights) and
+# aim assist (slowdown and lock-on over targets). Mouse aim is not affected.
+console_aim() { # <game cfg>
+  [ "${CONSOLE_AIM:-1}" != 0 ] && [ -f "$1" ] || return 0
+  local v
+  for v in aim_accel_turnrate_enabled=1 aim_accel_turnrate_lerp=1200 aim_input_graph_enabled=1 \
+           aim_input_graph_index=3 aim_scale_view_axis=1 aim_turnrate_yaw=260 aim_turnrate_pitch=90 \
+           aim_turnrate_yaw_ads=90 aim_turnrate_pitch_ads=55 aim_autoaim_enabled=1 \
+           aim_lockon_enabled=1 aim_slowdown_enabled=1; do
+    if grep -q "^seta ${v%%=*} " "$1"; then sed -i '' -E "s/^seta ${v%%=*} \"[^\"]*\"/seta ${v%%=*} \"${v#*=}\"/" "$1"
+    else printf 'seta %s "%s"\n' "${v%%=*}" "${v#*=}" >> "$1"; fi
+  done
+}
 case "$t:$mode" in
+  t6c:*)   # the campaign: its own folder; fullscreen at the desktop's size
+    for c in "$dir"/players/*.cfg; do fullscreen_cfg "$c"; console_aim "$c"; done
+    hold_1x_size "$("$kit/tools/displaymode" current 2>/dev/null | cut -d' ' -f1,2)" ;;
   t6:mp) hold_1x "$plutonium/storage/t6/players/plutonium_mp.cfg" ;;
   t6:*) hold_1x "$plutonium/storage/t6/players/plutonium_zm.cfg" ;;
   t5:mp) hold_1x "$plutonium/storage/t5/players/config_mp.cfg" ;;
@@ -242,9 +272,7 @@ if [ "$t" = t6c ]; then
   : > "$home/logs/bo2c-play.log"
   start_game
   game_pid=$(game_running 120) || die "the campaign did not start (see logs/bo2c-play.log)"
-  if on DISPLAY_MODE && [ -n "${dw:-}" ] && [ -n "${dh:-}" ]; then
-    "$kit/tools/displaymode" "$dw" "$dh" "$game_pid" >> "$home/logs/displaymode.log" 2>&1 &
-  fi
+  : "$game_pid"   # the 1x display mode is held from before Wine started (hold_1x_size)
   while pgrep -f 't6sp\.exe' >/dev/null; do sleep 2; done
   exit 0
 fi
@@ -393,6 +421,7 @@ PY
   # (as for BO1/BO2). On a HiDPI desktop the game otherwise switches to the
   # panel's full pixel size and shows its 1080p picture in one corner.
   if on DISPLAY_MODE && [ -n "${dw:-}" ] && [ -n "${dh:-}" ]; then
+    stop_displaymode
     "$kit/tools/displaymode" "$dw" "$dh" $$ >> "$home/logs/displaymode.log" 2>&1 &
     sleep 2   # the switch first: Wine reads the desktop mode as the game starts
   fi
@@ -427,6 +456,7 @@ defaults_once() {   # defaults_once <cfg> <marker> name value ...
   : > "$marker"
 }
 common_cvars() {
+  fullscreen_cfg "$1"
   on MSAA_FIX && sed -i '' -E 's/^seta r_aaSamples "(8|16|32)"/seta r_aaSamples "4"/' "$1"
   if [ -n "$desktop" ]; then
     local rmode
@@ -434,18 +464,7 @@ common_cvars() {
     if [ "$rmode" = 800 ] || { [ -n "$rmode" ] && [ "$rmode" -gt "${desktop%x*}" ]; }; then set_cvar "$1" r_mode "$desktop"; fi
   fi
   if [ "${RAW_INPUT:-1}" = 1 ]; then set_or_add "$1" raw_input 1; set_cvar "$1" m_filter 0; fi
-  # Controller aim as on the consoles: turn acceleration, the console turn
-  # rates (260/90 degrees/s left-right/up-down, 90/55 aiming down sights) and
-  # aim assist (slowdown and lock-on over targets). Mouse aim is not affected.
-  if on CONSOLE_AIM; then
-    local v
-    for v in aim_accel_turnrate_enabled=1 aim_accel_turnrate_lerp=1200 aim_input_graph_enabled=1 \
-             aim_input_graph_index=3 aim_scale_view_axis=1 aim_turnrate_yaw=260 aim_turnrate_pitch=90 \
-             aim_turnrate_yaw_ads=90 aim_turnrate_pitch_ads=55 aim_autoaim_enabled=1 \
-             aim_lockon_enabled=1 aim_slowdown_enabled=1; do
-      set_or_add "$1" "${v%%=*}" "${v#*=}"
-    done
-  fi
+  console_aim "$1"
   set_or_add "$1" gpad_stick_deadzone_min "${STICK_DEADZONE:-0.08}"
   set_or_add "$1" cl_mouseAccel 0
 }
