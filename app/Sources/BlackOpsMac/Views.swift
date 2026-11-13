@@ -304,14 +304,9 @@ struct SetupChecklist: View {
             }
             if game == .bo2c {
                 Check(done: state.campaignSteam["steam"] == "installed", title: "Steam for Windows (campaign only)",
-                      detail: "The campaign's Steam DRM needs the Steam client. Installs Valve's Steam for Windows in the campaign's own Wine prefix (the other games are not touched).") {
+                      detail: "The campaign's Steam DRM needs the Steam client. Installs Valve's Steam for Windows in the campaign's own Wine prefix (the other games are not touched). The first time you play, Steam opens to sign in; it remembers you after that.") {
                     Button("Install") { state.setupCampaignSteam() }
                         .disabled(!state.engineInstalled || state.progress != nil)
-                }
-                Check(done: state.campaignSteam["signedin"] == "yes", title: "Sign in to Steam",
-                      detail: "Once. Steam's window may stay black: click it, type your user name, press Tab, your password, Enter (approve Steam Guard on your phone). It remembers you after that.") {
-                    Button("Open Steam") { state.openCampaignSteam() }
-                        .disabled(state.campaignSteam["steam"] != "installed" || state.progress != nil)
                 }
             } else if game == .boiii {
                 Check(done: state.prefixReady, title: "Wine prefix",

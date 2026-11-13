@@ -178,9 +178,14 @@ if [ "$t" = t6c ]; then
   else reg add 'HKCU\Software\Wine\AppDefaults\t6sp.exe\Mac Driver' /v CaptureDisplaysForFullscreen /d n /f; fi
   camp="$kit/bo2-campaign.sh"
   bash "$camp" library "$dir" || exit 1
-  # Steam usually runs already (the app starts it in the background): it
-  # signs in on its own with the remembered account
-  bash "$camp" steam -silent || exit 1
+  # Steam usually runs already (the app starts it in the background) and
+  # signs in on its own with the remembered account. The first time, its
+  # window opens to sign in, and the game starts once that is done.
+  if bash "$camp" status | grep -q '^signedin=yes'; then
+    bash "$camp" steam -silent || exit 1
+  else
+    bash "$camp" show || exit 1
+  fi
   bash "$camp" wait || exit 1
   # started from here rather than from Steam's library: tell the Steam API which game it is
   [ -f "$dir/steam_appid.txt" ] || printf '202970' > "$dir/steam_appid.txt"

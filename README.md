@@ -28,8 +28,8 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 ### T6 – BOII (Campaign) · Black Ops II's campaign from Steam
 
 - **The campaign of your Steam copy** (`t6sp.exe`; Plutonium has no campaign), with the same Direct3D 11 → Metal setup as Black Ops II: DXMT, background pipelines, frame pacing, x87 acceleration, controller fixes.
-- **Downloaded with the Mac Steam app is fine**: choose its folder (`Steam/steamapps/common/Call of Duty Black Ops II`).
-- **Windows Steam in its own Wine prefix** (the game's Steam DRM needs it), separate from every other game; its in-game overlay is off. It starts in the background when you open the campaign, and signs in by itself after the first time.
+- **Your game folder can be anywhere**: choose it (downloaded with the Mac Steam app, copied from a PC, on an external drive…). BO-Mac shows it to Steam through a library of its own.
+- **Windows Steam in its own Wine prefix** (the game's Steam DRM needs it), separate from every other game; its in-game overlay is off. The first time you press **Play Campaign**, Steam opens to sign in and the game starts once you have; after that, Steam starts in the background and signs in by itself.
 - **Starts fullscreen at 1920×1080** (an Apple-GPU hardware profile, once), with a 1x display mode while the game runs.
 
 ### T7 – BOIII (Mac Version) · Black Ops III from Steam
@@ -89,7 +89,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
    - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
    - **Black Ops III**: Once the game is installed through Steam, click *Install* → the server browser will open. From there, select any server you want to join, and the game will launch automatically. Once the game opens, navigate to the corresponding game mode (e.g., Zombies), and you'll automatically join the selected server. Alternatively, you can launch the game directly through Steam to join Steam servers or open the server browser separately to connect to community servers.
 
-   - **T6 – BOII (Campaign)**: *Install* Steam for Windows → *Open Steam* and sign in once (the window may stay black: click it, type your user name, Tab, password, Enter; approve Steam Guard on your phone) → *Choose…* your Steam copy's folder → **Play Campaign**.
+   - **T6 – BOII (Campaign)**: *Install* Steam for Windows → *Choose…* your game folder (wherever it is) → **Play Campaign**. The first time, Steam opens to sign in (the window may stay black: click it, type your user name, Tab, password, Enter; approve Steam Guard on your phone).
    - **Black Ops III (Windows Version)** — see below.
 
 4. The first time you load a Black Ops map, the loading screen will remain visible while all shaders are compiled (up to about a minute). Subsequent loads will be much faster.

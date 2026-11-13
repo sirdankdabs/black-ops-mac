@@ -354,7 +354,7 @@ final class AppState: ObservableObject {
         }
     }
     func setupCampaignSteam() {
-        runScript("bo2-campaign.sh", ["setup"], title: "Installing Steam for the campaign") { [weak self] in self?.watchCampaignSignIn() }
+        runScript("bo2-campaign.sh", ["setup"], title: "Installing Steam for the campaign") { [weak self] in self?.refreshCampaignSteam() }
     }
     func openCampaignSteam() {
         runScript("bo2-campaign.sh", ["steam"], title: nil) { [weak self] in self?.watchCampaignSignIn() }

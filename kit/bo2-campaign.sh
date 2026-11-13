@@ -10,8 +10,8 @@
 #   bo2-campaign.sh steam [-silent]   opens Windows Steam (to sign in), or
 #                            starts it in the background
 #   bo2-campaign.sh wait     waits (up to 2 minutes) until Steam is signed in
-#   bo2-campaign.sh library <game folder>   adds the Steam library that holds
-#                            the game (e.g. the Mac Steam app's) to Windows Steam
+#   bo2-campaign.sh library <game folder>   points Windows Steam at the game,
+#                            wherever its folder is
 #
 # Progress lines start with "==> "; errors with "ERROR: ".
 set -uo pipefail
@@ -76,29 +76,67 @@ setup)
   ;;
 steam)
   [ -f "$steamdir/Steam.exe" ] || die "Steam is not installed"
+  shift; start_steam "$@"
+  ;;
+show)
+  # Steam's window, to sign in: a background Steam that never signed in has
+  # no window, so restart it in front
+  [ -f "$steamdir/Steam.exe" ] || die "Steam is not installed"
+  running && { "$WINESERVER" -k; sleep 2; }
   start_steam
   ;;
 wait)
-  for _ in $(seq 1 60); do signed_in && exit 0; sleep 2; done
-  die "Steam did not sign in: open Steam from BO-Mac and sign in"
+  for _ in $(seq 1 150); do signed_in && exit 0; sleep 2; done
+  die "Steam did not sign in: sign in in Steam's window, then press Play Campaign again"
   ;;
 library)
+  # Steam's DRM only starts a game that sits in one of Steam's libraries.
+  # BO-Mac keeps one inside the campaign's prefix ("C:\BO-Mac Library"),
+  # whose game folder is a link to yours, wherever it is.
   game=${2:-}
   [ -f "$game/t6sp.exe" ] || die "no t6sp.exe in the game folder"
-  lib=$(cd "$game/../../.." 2>/dev/null && pwd)
-  [ -d "$lib/steamapps" ] || die "the game folder is not inside a Steam library (steamapps/common/…)"
   vdf="$steamdir/steamapps/libraryfolders.vdf"
-  winpath="Z:${lib//\//\\}"
-  [ -f "$vdf" ] || die "start Steam once first"
-  grep -qF "${winpath//\\/\\\\}" "$vdf" && exit 0
+  # a new Steam writes its library list later: start it with Steam's own folder
+  if [ ! -f "$vdf" ]; then
+    mkdir -p "$(dirname "$vdf")"
+    printf '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"C:\\\\Program Files (x86)\\\\Steam"\n\t\t"label"\t\t""\n\t\t"contentid"\t\t"0"\n\t\t"totalsize"\t\t"0"\n\t\t"apps"\n\t\t{\n\t\t}\n\t}\n}\n' > "$vdf"
+  fi
+  bomlib="$WINEPREFIX/drive_c/BO-Mac Library/steamapps"
+  mkdir -p "$bomlib/common"
+  ln -sfn "$game" "$bomlib/common/Call of Duty Black Ops II"
+  # the game's manifest: the one of the Steam library it came from (the Mac
+  # Steam app's, a Windows Steam's), so Steam sees the same build; otherwise
+  # one for the current build
+  src="$game/../../appmanifest_202970.acf"
+  if [ -f "$src" ]; then
+    sed -E 's/("installdir"[[:space:]]*)"[^"]*"/\1"Call of Duty Black Ops II"/' "$src" > "$bomlib/appmanifest_202970.acf"
+  elif [ ! -f "$bomlib/appmanifest_202970.acf" ]; then
+    cat > "$bomlib/appmanifest_202970.acf" <<'ACF'
+"AppState"
+{
+	"appid"		"202970"
+	"Universe"		"1"
+	"name"		"Call of Duty: Black Ops II"
+	"StateFlags"		"4"
+	"installdir"		"Call of Duty Black Ops II"
+	"LastUpdated"		"1794544466"
+	"SizeOnDisk"		"12759123336"
+	"buildid"		"24784288"
+	"AutoUpdateBehavior"		"0"
+	"AllowOtherDownloadsWhileRunning"		"0"
+	"ScheduledAutoUpdate"		"0"
+}
+ACF
+  fi
+  grep -qF 'C:\\BO-Mac Library' "$vdf" && exit 0
   running && { "$WINESERVER" -k; sleep 2; }
-  /usr/bin/python3 -I - "$vdf" "$winpath" <<'PY'
+  /usr/bin/python3 -I - "$vdf" <<'PY'
 import re, sys
-p, path = sys.argv[1], sys.argv[2]
+p = sys.argv[1]
 s = open(p).read().rstrip()
 n = max([int(x) for x in re.findall(r'^\t"(\d+)"\s*$', s, re.M)] or [0]) + 1
-entry = ('\t"%d"\n\t{\n\t\t"path"\t\t"%s"\n\t\t"label"\t\t""\n\t\t"contentid"\t\t"0"\n'
-         '\t\t"totalsize"\t\t"0"\n\t\t"apps"\n\t\t{\n\t\t\t"202970"\t\t"0"\n\t\t}\n\t}\n') % (n, path.replace("\\", "\\\\"))
+entry = ('\t"%d"\n\t{\n\t\t"path"\t\t"C:\\\\BO-Mac Library"\n\t\t"label"\t\t""\n\t\t"contentid"\t\t"0"\n'
+         '\t\t"totalsize"\t\t"0"\n\t\t"apps"\n\t\t{\n\t\t\t"202970"\t\t"0"\n\t\t}\n\t}\n') % n
 open(p, "w").write(s[:-1] + entry + "}\n")
 PY
   step "Steam library added"
