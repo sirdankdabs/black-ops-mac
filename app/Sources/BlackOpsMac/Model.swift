@@ -6,7 +6,7 @@ import SwiftUI
 // MARK: - Games
 
 enum Game: String, CaseIterable, Identifiable {
-    case bo1, bo2, bo3, waw
+    case bo1, bo2, bo3, boiii, waw
     var id: String { rawValue }
 
     var title: String {
@@ -14,6 +14,7 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo1: "Black Ops"
         case .bo2: "Black Ops II"
         case .bo3: "Black Ops III"
+        case .boiii: "Black Ops III (Windows)"
         case .waw: "World at War"
         }
     }
@@ -22,6 +23,7 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo1: "Plutonium · Zombies, Campaign, Multiplayer"
         case .bo2: "Plutonium · Zombies, Multiplayer"
         case .bo3: "Native Mac game · community servers"
+        case .boiii: "BOIII · Ezz community servers"
         case .waw: "Coming soon"
         }
     }
@@ -30,6 +32,7 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo1: "1.circle.fill"
         case .bo2: "2.circle.fill"
         case .bo3: "3.circle.fill"
+        case .boiii: "3.square.fill"
         case .waw: "clock.fill"
         }
     }
@@ -38,6 +41,7 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo1: [Color(red: 0.95, green: 0.55, blue: 0.10), Color(red: 0.55, green: 0.12, blue: 0.05)]
         case .bo2: [Color(red: 0.20, green: 0.75, blue: 0.95), Color(red: 0.05, green: 0.20, blue: 0.45)]
         case .bo3: [Color(red: 0.90, green: 0.20, blue: 0.25), Color(red: 0.20, green: 0.05, blue: 0.10)]
+        case .boiii: [Color(red: 0.55, green: 0.25, blue: 0.85), Color(red: 0.12, green: 0.05, blue: 0.22)]
         case .waw: [Color(red: 0.55, green: 0.55, blue: 0.50), Color(red: 0.15, green: 0.15, blue: 0.13)]
         }
     }
@@ -46,10 +50,12 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: "BO1_DIR"
         case .bo2: "BO2_DIR"
+        case .boiii: "BOIII_DIR"
         default: nil
         }
     }
-    var usesEngine: Bool { self == .bo1 || self == .bo2 }
+    var usesEngine: Bool { self == .bo1 || self == .bo2 || self == .boiii }
+    var usesPlutonium: Bool { self == .bo1 || self == .bo2 }
 }
 
 struct PlayMode: Identifiable {
@@ -68,6 +74,7 @@ extension Game {
         case .bo2: [PlayMode(id: "online", title: "Play Online", symbol: "globe"),
                     PlayMode(id: "zombies", title: "Zombies", symbol: "figure.walk"),
                     PlayMode(id: "mp", title: "Multiplayer", symbol: "person.3.fill")]
+        case .boiii: [PlayMode(id: "play", title: "Play", symbol: "play.fill")]
         default: []
         }
     }
@@ -94,10 +101,10 @@ extension Patch {
               games: [.bo1, .bo2]),
         Patch(key: "EXEC_ON_DEMAND", title: "Fast code execution",
               info: "Plutonium turns off DEP, so Wine would make the game's whole memory executable at once, which makes Rosetta re-check it constantly (BO2 ran in slow motion). Our engine makes each page executable only when it is first run.",
-              games: [.bo1, .bo2]),
+              games: [.bo1, .bo2, .boiii]),
         Patch(key: "RUMBLE_FIX", title: "Controller vibration without input delay",
               info: "Every vibration command is a round trip to the controller, and Wine made the controller's input wait for it twice: in XInput (the game waited too) and in its HID bus driver (winebus), which held the device lock during the write and so held back every stick and button report. Aiming and shooting lagged whenever the controller rumbled. Ours sends vibration from its own thread and writes it without blocking input.",
-              games: [.bo1, .bo2]),
+              games: [.bo1, .bo2, .boiii]),
         Patch(key: "RAW_INPUT", title: "Raw mouse input",
               info: "Reads the mouse directly, without macOS pointer acceleration or smoothing, so aim follows your hand 1:1.",
               games: [.bo1, .bo2]),
@@ -106,7 +113,7 @@ extension Patch {
               games: [.bo1, .bo2]),
         Patch(key: "CAPTURE_DISPLAY", title: "Direct fullscreen",
               info: "In fullscreen the game takes over the display, so macOS shows its frames directly instead of compositing them with the desktop: lower latency and steadier frame times.",
-              games: [.bo1, .bo2]),
+              games: [.bo1, .bo2, .boiii]),
         Patch(key: "DISPLAY_MODE", title: "Native display mode in fullscreen",
               info: "While the game runs fullscreen, the display switches to a 1x mode of the game's resolution, so a scaled (HiDPI) desktop does not make macOS draw every frame at twice the size.",
               games: [.bo1, .bo2]),
@@ -141,10 +148,10 @@ extension Patch {
         // Black Ops II
         Patch(key: "BO2_ASYNC", title: "Background shader compilation",
               info: "DXMT compiles new Metal pipelines on separate threads instead of stopping the frame that needs them.",
-              games: [.bo2]),
+              games: [.bo2, .boiii]),
         Patch(key: "BO2_FRAME_PACING", title: "Frame pacing",
               info: "DXMT paces frames evenly at the frame-rate cap (the monitor's refresh rate by default) instead of letting them bunch up.",
-              games: [.bo2]),
+              games: [.bo2, .boiii]),
         Patch(key: "BO2_HW_PROFILE", title: "Safe hardware profile",
               info: "Starts Black Ops II with a blank hardware profile so it detects settings Apple GPUs support (otherwise it can pick 8x MSAA, which they do not have).",
               games: [.bo2]),
@@ -298,9 +305,18 @@ final class AppState: ObservableObject {
     var bo3GameState: String { bo3["state"] ?? "missing" }
     var bo3Installed: Bool { !(bo3["installed"] ?? "").isEmpty }
     var bo3Version: String? { bo3Installed ? bo3["installed"] : nil }
+    /// boiii.exe in the Windows Black Ops III folder
+    var boiiiInstalled: Bool {
+        guard let f = folder(for: .boiii) else { return false }
+        return FileManager.default.fileExists(atPath: f.appendingPathComponent("boiii.exe").path)
+    }
+    func downloadBoiii() { runScript("boiii.sh", ["download"], title: "Downloading boiii.exe") }
+    func createEmptyPrefix() { runScript("setup-prefix.sh", ["init"], title: "Creating the Wine prefix") }
+
     func isReady(_ game: Game) -> Bool {
         switch game {
         case .bo1, .bo2: engineInstalled && prefixReady && plutoniumInstalled && folder(for: game) != nil
+        case .boiii: engineInstalled && prefixReady && folder(for: game) != nil && boiiiInstalled
         case .bo3: bo3Installed
         case .waw: false
         }
@@ -314,7 +330,9 @@ final class AppState: ObservableObject {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.prompt = "Choose"
-        panel.message = "Choose the \(game.title) folder (the one with the zone folder inside)"
+        panel.message = game == .boiii
+            ? "Choose the Windows Black Ops III folder (the one with BlackOps3.exe and the zone folder)"
+            : "Choose the \(game.title) folder (the one with the zone folder inside)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard FileManager.default.fileExists(atPath: url.appendingPathComponent("zone").path) else {
             error = "That folder has no zone folder: pick the \(game.title) game folder."

@@ -5,6 +5,7 @@
 #
 #   uninstall.sh bo1    forget the Black Ops folder; its shader caches go
 #   uninstall.sh bo2    forget the Black Ops II folder
+#   uninstall.sh boiii  forget the Black Ops III (Windows) folder
 #   uninstall.sh all    the engine, the Wine prefix (Plutonium and its login),
 #                       caches, logs and settings: Black Ops and Black Ops II
 #                       both start from the beginning (Black Ops III untouched)
@@ -42,6 +43,12 @@ bo1)
   trash "$home/cache/plutonium-bootstrapper-win32.dxvk-cache"
   for f in "$home"/engine/lib64/mvkcache.bin.*; do trash "$f"; done
   step "Black Ops can be set up again"
+  ;;
+boiii)
+  stop_games
+  step "Removing the Black Ops III (Windows) setup"
+  forget BOIII_DIR
+  step "Black Ops III (Windows) can be set up again"
   ;;
 bo2)
   stop_games
@@ -86,6 +93,6 @@ bo3)
   step "BO3 Mac Client removed"
   ;;
 *)
-  die "usage: uninstall.sh bo1 | bo2 | all | bo3"
+  die "usage: uninstall.sh bo1 | bo2 | boiii | all | bo3"
   ;;
 esac
