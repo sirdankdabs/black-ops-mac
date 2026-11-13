@@ -178,15 +178,6 @@ if [ "$t" = t6c ]; then
   else reg add 'HKCU\Software\Wine\AppDefaults\t6sp.exe\Mac Driver' /v CaptureDisplaysForFullscreen /d n /f; fi
   camp="$kit/bo2-campaign.sh"
   bash "$camp" library "$dir" || exit 1
-  # Steam usually runs already (the app starts it in the background) and
-  # signs in on its own with the remembered account. The first time, its
-  # window opens to sign in, and the game starts once that is done.
-  if bash "$camp" status | grep -q '^signedin=yes'; then
-    bash "$camp" steam -silent || exit 1
-  else
-    bash "$camp" show || exit 1
-  fi
-  bash "$camp" wait || exit 1
   # started from here rather than from Steam's library: tell the Steam API which game it is
   [ -f "$dir/steam_appid.txt" ] || printf '202970' > "$dir/steam_appid.txt"
   # a hardware profile made on an Apple GPU (fullscreen 1920x1080), once, as for BO2
@@ -194,17 +185,43 @@ if [ "$t" = t6c ]; then
     mkdir -p "$dir/players"
     cp "$kit/payload/bo2/hardware.chp" "$dir/players/hardware.chp" && : > "$dir/players/.bom-defaults-hardware"
   fi
-  # The game's Steam DRM hands the start to Steam, which runs t6sp.exe again
-  # from its library: follow that process (display mode, "running" in the app)
-  cd "$dir" || exit 1
-  "$wine" t6sp.exe > "$home/logs/bo2c-play.log" 2>&1
-  game_pid=""
-  for _ in $(seq 1 60); do game_pid=$(pgrep -f 't6sp\.exe' | tail -1); [ -n "$game_pid" ] && break; sleep 1; done
-  [ -n "$game_pid" ] || die "the campaign did not start (see logs/bo2c-play.log)"
+  start_game() { (cd "$dir" && "$wine" t6sp.exe >> "$home/logs/bo2c-play.log" 2>&1 &); }
+  # The game is running when a t6sp.exe works the CPU (one that only shows a
+  # Steam error, or hands the start to Steam and quits, doesn't): its pid
+  game_running() {  # game_running <seconds>
+    local pid cpu
+    for _ in $(seq 1 "$1"); do
+      for pid in $(pgrep -f 't6sp\.exe'); do
+        cpu=$(ps -o %cpu= -p "$pid" 2>/dev/null | tr -d ' '); cpu=${cpu%%.*}
+        [ "${cpu:-0}" -gt 20 ] && { echo "$pid"; return 0; }
+      done
+      sleep 1
+    done
+    return 1
+  }
+  : > "$home/logs/bo2c-play.log"
+  # t6sp.exe first: with Steam open and signed in, the game just starts
+  start_game
+  game_pid=$(game_running 40)
+  if [ -z "$game_pid" ]; then
+    # Steam didn't take it (not open, not signed in yet, or a Steam error):
+    # close that attempt, get Steam ready (its window opens to sign in the
+    # first time; after that it signs in by itself) and start the game again
+    pkill -f 't6sp\.exe'; sleep 1
+    if bash "$camp" status | grep -q '^signedin=yes'; then
+      bash "$camp" steam -silent || exit 1
+    else
+      bash "$camp" show || exit 1
+    fi
+    bash "$camp" wait || exit 1
+    start_game
+    game_pid=$(game_running 90) || die "the campaign did not start (see logs/bo2c-play.log)"
+  fi
   if on DISPLAY_MODE && [ -n "${dw:-}" ] && [ -n "${dh:-}" ]; then
     "$kit/tools/displaymode" "$dw" "$dh" "$game_pid" >> "$home/logs/displaymode.log" 2>&1 &
   fi
-  while kill -0 "$game_pid" 2>/dev/null; do sleep 2; done
+  # the game may hand itself to Steam's own start: follow whichever t6sp.exe runs
+  while pgrep -f 't6sp\.exe' >/dev/null; do sleep 2; done
   exit 0
 fi
 
