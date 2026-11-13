@@ -19,6 +19,14 @@ rm -rf "$stage/include" "$stage/share/man" "$stage/share/applications"
 # the loader where the kit runs it from
 [ -e "$stage/lib/wine/x86_64-unix/wine" ] || cp -p "$stage/bin/wine" "$stage/lib/wine/x86_64-unix/wine"
 
+step "Stripping debug information (it holds the build machine's paths)"
+for f in "$stage"/bin/* "$stage"/lib/wine/x86_64-unix/*; do
+  file "$f" | grep -q Mach-O && strip -S "$f" 2>/dev/null
+done
+find "$stage/lib/wine/x86_64-windows" -type f -exec x86_64-w64-mingw32-strip --strip-debug {} + 2>/dev/null
+find "$stage/lib/wine/i386-windows" -type f -exec i686-w64-mingw32-strip --strip-debug {} + 2>/dev/null
+if grep -rlaq "$HOME" "$stage"; then echo "build paths left in the package" >&2; exit 1; fi
+
 step "Adding the libraries Wine loads"
 mkdir -p "$stage/lib64"
 # everything the given libraries need from the template, recursively

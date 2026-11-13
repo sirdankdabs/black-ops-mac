@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Games
 
@@ -11,11 +12,11 @@ enum Game: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .bo1: "Black Ops"
-        case .bo2: "Black Ops II"
-        case .bo3: "Black Ops III"
-        case .boiii: "Black Ops III (Windows)"
-        case .waw: "World at War"
+        case .bo1: "T5 - BOI"
+        case .bo2: "T6 - BOII"
+        case .bo3: "T7 - BOIII (Mac Version)"
+        case .boiii: "T7 - BOIII (Windows Version)"
+        case .waw: "T4 - WaW"
         }
     }
     var subtitle: String {
@@ -38,10 +39,10 @@ enum Game: String, CaseIterable, Identifiable {
     }
     var colors: [Color] {
         switch self {
-        case .bo1: [Color(red: 0.95, green: 0.55, blue: 0.10), Color(red: 0.55, green: 0.12, blue: 0.05)]
-        case .bo2: [Color(red: 0.20, green: 0.75, blue: 0.95), Color(red: 0.05, green: 0.20, blue: 0.45)]
-        case .bo3: [Color(red: 0.90, green: 0.20, blue: 0.25), Color(red: 0.20, green: 0.05, blue: 0.10)]
-        case .boiii: [Color(red: 0.55, green: 0.25, blue: 0.85), Color(red: 0.12, green: 0.05, blue: 0.22)]
+        case .bo1: [Color(red: 0.20, green: 0.55, blue: 0.95), Color(red: 0.04, green: 0.12, blue: 0.35)]
+        case .bo2: [Color(red: 0.92, green: 0.18, blue: 0.20), Color(red: 0.30, green: 0.04, blue: 0.06)]
+        case .bo3: [Color(red: 0.98, green: 0.52, blue: 0.10), Color(red: 0.35, green: 0.12, blue: 0.03)]
+        case .boiii: [Color(red: 0.98, green: 0.52, blue: 0.10), Color(red: 0.35, green: 0.12, blue: 0.03)]
         case .waw: [Color(red: 0.55, green: 0.55, blue: 0.50), Color(red: 0.15, green: 0.15, blue: 0.13)]
         }
     }
@@ -74,7 +75,8 @@ extension Game {
         case .bo2: [PlayMode(id: "online", title: "Play Online", symbol: "globe"),
                     PlayMode(id: "zombies", title: "Zombies", symbol: "figure.walk"),
                     PlayMode(id: "mp", title: "Multiplayer", symbol: "person.3.fill")]
-        case .boiii: [PlayMode(id: "play", title: "Play", symbol: "play.fill")]
+        case .boiii: [PlayMode(id: "play", title: "Play", symbol: "play.fill"),
+                      PlayMode(id: "launcher", title: "BOIII Launcher", symbol: "person.2.fill")]
         default: []
         }
     }
@@ -116,7 +118,7 @@ extension Patch {
               games: [.bo1, .bo2, .boiii]),
         Patch(key: "DISPLAY_MODE", title: "Native display mode in fullscreen",
               info: "While the game runs fullscreen, the display switches to a 1x mode of the game's resolution, so a scaled (HiDPI) desktop does not make macOS draw every frame at twice the size.",
-              games: [.bo1, .bo2]),
+              games: [.bo1, .bo2, .boiii]),
         Patch(key: "MSAA_FIX", title: "Supported anti-aliasing",
               info: "Apple GPUs support up to 4x MSAA; higher settings in the games' configs are lowered to 4x so the game does not fall back or render wrongly.",
               games: [.bo1, .bo2]),
@@ -155,6 +157,10 @@ extension Patch {
         Patch(key: "BO2_HW_PROFILE", title: "Safe hardware profile",
               info: "Starts Black Ops II with a blank hardware profile so it detects settings Apple GPUs support (otherwise it can pick 8x MSAA, which they do not have).",
               games: [.bo2]),
+        // Black Ops III (Windows)
+        Patch(key: "BOIII_GRAPHICS", title: "Full-detail first start",
+              info: "On its first start Black Ops III's auto-detect does not know Apple GPUs and picks half resolution with no shadows. Instead it starts fullscreen at your display's size and refresh rate with full resolution, shadows, volumetric lighting, ambient occlusion and SMAA. Only once: the game's own options rule afterwards.",
+              games: [.boiii]),
     ]
 
     static func `for`(_ game: Game) -> [Patch] { all.filter { $0.games.contains(game) } }
@@ -171,17 +177,11 @@ enum Paths {
     static var plutonium: URL {
         prefix.appendingPathComponent("drive_c/users/crossover/AppData/Local/Plutonium")
     }
-    /// The kit (scripts and engine payload): in the app bundle, or next to the
-    /// app's source folder while developing.
+    /// The kit (scripts and engine payload): in the app bundle, or the one
+    /// BOM_KIT points at while developing.
     static var kit: URL {
-        if let res = Bundle.main.resourceURL?.appendingPathComponent("kit"),
-           FileManager.default.fileExists(atPath: res.appendingPathComponent("launch.sh").path) {
-            return res
-        }
-        return URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("kit")
+        if let dev = ProcessInfo.processInfo.environment["BOM_KIT"] { return URL(fileURLWithPath: dev) }
+        return Bundle.main.resourceURL!.appendingPathComponent("kit")
     }
     /// Wine prefixes with Plutonium from older setups, offered for import
     /// (the Plutonium login and game settings come with them), most recently
@@ -235,7 +235,7 @@ struct Settings {
     func save() {
         try? FileManager.default.createDirectory(at: Paths.home, withIntermediateDirectories: true)
         let body = values.keys.sorted().map { "\($0)=\(values[$0]!)" }.joined(separator: "\n")
-        try? ("# Black Ops Mac settings (written by the app)\n" + body + "\n")
+        try? ("# BO-Mac settings (written by the app)\n" + body + "\n")
             .write(to: Paths.settings, atomically: true, encoding: .utf8)
     }
 
@@ -311,6 +311,28 @@ final class AppState: ObservableObject {
         return FileManager.default.fileExists(atPath: f.appendingPathComponent("boiii.exe").path)
     }
     func downloadBoiii() { runScript("boiii.sh", ["download"], title: "Downloading boiii.exe") }
+
+    /// BOIII stats, loadouts and identity keys, saved in one zip / put back.
+    func backupBoiii() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
+        panel.message = "Choose where to save your BOIII backup (stats, loadouts and identity). Keep it private."
+        panel.prompt = "Save Backup"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        runScript("boiii.sh", ["backup", url.path], title: "Backing up your BOIII stats")
+    }
+
+    func restoreBoiii() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true; panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.zip]
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
+        panel.message = "Choose a BOIII backup. Your current stats and identity go to the Trash."
+        panel.prompt = "Restore"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        runScript("boiii.sh", ["restore", url.path], title: "Restoring your BOIII stats")
+    }
     func createEmptyPrefix() { runScript("setup-prefix.sh", ["init"], title: "Creating the Wine prefix") }
 
     func isReady(_ game: Game) -> Bool {
@@ -480,7 +502,7 @@ final class AppState: ObservableObject {
                 } else if manual {
                     let alert = NSAlert()
                     alert.messageText = "You're up to date"
-                    alert.informativeText = "Black Ops Mac \(current) is the latest version."
+                    alert.informativeText = "BO-Mac \(current) is the latest version."
                     alert.runModal()
                 }
             }
@@ -489,7 +511,7 @@ final class AppState: ObservableObject {
 
     private func offerUpdate(_ release: Release) {
         let alert = NSAlert()
-        alert.messageText = "Black Ops Mac \(release.version) is available"
+        alert.messageText = "BO-Mac \(release.version) is available"
         var notes = release.notes.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "### ", with: "")
         if notes.count > 900 { notes = String(notes.prefix(900)) + "…" }
         alert.informativeText = "You have \(appVersion).\n\n\(notes)"
@@ -523,7 +545,7 @@ final class AppState: ObservableObject {
     /// to the Trash) and opens it.
     private func installUpdate(_ release: Release) {
         guard running == nil else { error = "Quit the game first, then update."; return }
-        progress = "Downloading Black Ops Mac \(release.version)"
+        progress = "Downloading BO-Mac \(release.version)"
         let current = Bundle.main.bundleURL
         Task.detached {
             do {

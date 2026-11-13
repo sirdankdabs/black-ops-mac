@@ -1,0 +1,49 @@
+DXMT v0.80 (on top of dxmt-async-pipeline-v0.80.patch): a render target
+larger than the bound depth buffer is drawn without the depth buffer instead
+of dropping the call (Black Ops III's upscale pass), and logs why other
+render target sets are rejected.
+
+--- a/src/d3d11/d3d11_context_impl.cpp	2026-11-12 20:49:27
++++ b/src/d3d11/d3d11_context_impl.cpp	2026-11-12 20:49:27
+@@ -2620,14 +2620,21 @@
+         // TODO: render target type should be checked as well
+         if (ref) {
+           auto &props = rtv->description();
+-          if (props.SampleCount != sample_count)
++          if (props.SampleCount != sample_count) {
++            WARN("OMSetRenderTargets: sample count ", props.SampleCount, " vs ", sample_count);
+             return false;
++          }
+           if (props.RenderTargetArrayLength != render_target_array_length) {
+             // array length can be different only if either is 0 or 1
+-            if (std::max(props.RenderTargetArrayLength, render_target_array_length) != 1)
++            if (std::max(props.RenderTargetArrayLength, render_target_array_length) != 1) {
++              WARN("OMSetRenderTargets: array length ", props.RenderTargetArrayLength, " vs ", render_target_array_length);
+               return false;
++            }
+           }
+-          // TODO: check all RTVs have the same size
++          // A render target larger than the depth buffer (Black Ops III's
++          // upscaling pass binds its half-size depth buffer with the full-size
++          // back buffer): rejected here, the caller then drops the depth
++          // buffer instead of the whole call.
+           if (width < props.Width || height < props.Height)
+             return false;
+           // render_target_array_length will be 1 only if all render targets are array
+@@ -2796,8 +2803,14 @@
+ 
+     if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL) {
+       if (!ValidateSetRenderTargets(NumRTVs, ppRenderTargetViews, pDepthStencilView)) {
+-        WARN("OMSetRenderTargets: invalid render targets");
+-        return;
++        // Direct3D 11 draws such a pass on Windows; Metal needs every
++        // attachment to cover the pass, so draw it without the depth buffer.
++        if (pDepthStencilView && ValidateSetRenderTargets(NumRTVs, ppRenderTargetViews, nullptr)) {
++          pDepthStencilView = nullptr;
++        } else {
++          WARN("OMSetRenderTargets: invalid render targets");
++          return;
++        }
+       }
+       auto &BoundRTVs = state_.OutputMerger.RTVs;
+       constexpr unsigned RTVSlotCount = D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;

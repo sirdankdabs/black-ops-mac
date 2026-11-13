@@ -1,5 +1,5 @@
 #!/bin/bash
-# Black Ops Mac: compile Black Ops 1's shaders for every map, once.
+# BO-Mac: compile Black Ops 1's shaders for every map, once.
 #
 # The first time a map loads, its loading screen stays up until all of its
 # pipelines are compiled (about a minute; afterwards it takes no time). This
