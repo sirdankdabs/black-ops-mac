@@ -172,8 +172,8 @@ extension Patch {
         Patch(key: "BOIII_GRAPHICS", title: "Full-detail first start",
               info: "On its first start Black Ops III's auto-detect does not know Apple GPUs and picks half resolution with no shadows. Instead it starts fullscreen at your display's size and refresh rate with full resolution, shadows, volumetric lighting, ambient occlusion and SMAA. Only once: the game's own options rule afterwards.",
               games: [.boiii]),
-        Patch(key: "BOIII_UNSAFE_LUA", title: "Allow mods' unsafe Lua",
-              info: "Some Workshop mods and modded servers use \"unsafe\" Lua functions: reading and writing files, running system commands, loading DLLs. With this on, boiii starts with -unsafe-lua and lets them run without asking (its \"Unsafe Lua Function Called\" question stopped some mods from working). The risk: any mod from any server can use them, and under Wine that reaches your whole Mac (drive Z:). Turn it off to have boiii ask first.",
+        Patch(key: "BOIII_SAFE_LUA", title: "Ask before unsafe Lua",
+              info: "Some Workshop mods and modded servers use \"unsafe\" Lua functions: reading and writing files, running system commands, loading DLLs. boiii asks first (\"Unsafe Lua Function Called\"). If a mod needs them and the question gets in its way, turn this off: boiii then starts with -unsafe-lua and lets them run without asking. The risk: any mod from any server can then use them, and under Wine that reaches your whole Mac (drive Z:). Only turn it off if you trust the servers and mods you play.",
               games: [.boiii]),
     ]
 

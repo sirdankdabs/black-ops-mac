@@ -62,7 +62,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **No Safe Mode prompt** after the game is stopped from the app.
 - **Back up your stats**: *Back Up Stats…* saves your stats, loadouts, save games and the identity keys the servers know you by in one zip — keep it, take it to another Mac (*Restore Stats…*) or to Windows.
 - **Workshop mods download**: boiii fetches a server's mod with SteamCMD, but on Wine it picks the Linux one, which can't run on a Mac ("Retry Limit Reached"). BO-Mac gives it Valve's macOS SteamCMD (checked against Valve's signature), with its own folder in the game folder (your Mac Steam app is never touched), behind a small Windows bridge so boiii can follow the download.
-- **Mods' unsafe Lua allowed by default**: some mods use "unsafe" Lua functions (files, system commands, DLLs), and boiii's question about them stopped some mods from working, so BO-Mac starts boiii with `-unsafe-lua`. That means any mod from any server can use them, and under Wine they reach your whole Mac: turn off *Allow mods' unsafe Lua* in Settings to have boiii ask first.
+- **Unsafe Lua**: some mods use "unsafe" Lua functions (files, system commands, DLLs) and boiii asks before allowing them. If that question gets in a mod's way, turn off *Ask before unsafe Lua* in Settings: boiii then starts with `-unsafe-lua`. Only do that if you trust the servers you join: under Wine those functions reach your whole Mac.
 - **Cutscene videos in their real colours**: Wine's video decoder hid the NV12 format on macOS (a CrossOver change); Black Ops III reads its videos as NV12, so they came out purple/green. The engine offers NV12 again.
 
 ### For every game
