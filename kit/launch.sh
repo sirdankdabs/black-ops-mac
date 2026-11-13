@@ -64,9 +64,14 @@ game=${1:-}; mode=${2:-}
 case "$game:$mode" in
   bo1:online|bo1:zombies|bo1:campaign|bo1:mp) dir=${BO1_DIR:-} t=t5 ;;
   bo2:online|bo2:zombies|bo2:mp|bo2:declassified) dir=${BO2_DIR:-} t=t6 ;;
-  *) die "usage: launch.sh bo1|bo2 online|zombies|campaign|mp [name], or launch.sh stop" ;;
+  boiii:play) dir=${BOIII_DIR:-} t=t7 ;;
+  *) die "usage: launch.sh bo1|bo2 online|zombies|campaign|mp [name], launch.sh boiii play, or launch.sh stop" ;;
 esac
-[ -n "$dir" ] && [ -d "$dir/zone" ] || die "the $game game folder is not set (or has no zone folder)"
+if [ "$t" = t7 ]; then
+  [ -n "$dir" ] && [ -f "$dir/boiii.exe" ] || die "the Black Ops III (Windows) folder is not set (or has no boiii.exe)"
+else
+  [ -n "$dir" ] && [ -d "$dir/zone" ] || die "the $game game folder is not set (or has no zone folder)"
+fi
 stop_all
 
 # --- Environment for the games ---------------------------------------------
@@ -149,8 +154,30 @@ if [ -d "$wdesk" ] && [ ! -L "$wdesk" ]; then
   for d in Downloads Documents; do [ -d "$HOME/$d" ] && ln -sfn "$HOME/$d" "$wdesk/$d"; done
   [ -d "${BO1_DIR:-}" ] && ln -sfn "$BO1_DIR" "$wdesk/Black Ops" || rm -f "$wdesk/Black Ops"
   [ -d "${BO2_DIR:-}" ] && ln -sfn "$BO2_DIR" "$wdesk/Black Ops II" || rm -f "$wdesk/Black Ops II"
+  [ -d "${BOIII_DIR:-}" ] && ln -sfn "$BOIII_DIR" "$wdesk/Black Ops III" || rm -f "$wdesk/Black Ops III"
 fi
 [ -e "$WINEPREFIX/dosdevices/h:" ] || ln -s "$HOME" "$WINEPREFIX/dosdevices/h:"
+
+# --- Black Ops III for Windows through boiii (BOIII / Ezz client) ----------------
+# boiii.exe sits in the game folder and starts the game from there (it is the
+# working directory), on DXMT (Direct3D 11 -> Metal, 64-bit).
+if [ "$t" = t7 ]; then
+  for exe in boiii.exe BlackOps3.exe; do
+    if on CAPTURE_DISPLAY; then reg add "HKCU\\Software\\Wine\\AppDefaults\\$exe\\Mac Driver" /v CaptureDisplaysForFullscreen /d y /f
+    else reg add "HKCU\\Software\\Wine\\AppDefaults\\$exe\\Mac Driver" /v CaptureDisplaysForFullscreen /d n /f; fi
+  done
+  "$WINESERVER" -w 2>/dev/null
+  # boiii keeps the game's location in AppData\Local\boiii\user\game_path.txt
+  # (Windows path, no newline; it guesses Steam's default otherwise): point
+  # it at the chosen folder, so the folder never has to be picked in boiii.
+  bdir="$WINEPREFIX/drive_c/users/crossover/AppData/Local/boiii/user"
+  mkdir -p "$bdir"
+  printf '%s' "Z:${dir//\//\\}" > "$bdir/game_path.txt"
+  log="$home/logs/boiii-play.log"
+  cd "$dir" || exit 1
+  # shellcheck disable=SC2086
+  exec "$wine" boiii.exe ${GAME_ARGS:-} > "$log" 2>&1
+fi
 
 # --- Plutonium and game settings -----------------------------------------------
 winpath="Z:${dir//\//\\}"

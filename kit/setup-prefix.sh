@@ -1,6 +1,7 @@
 #!/bin/bash
 # Black Ops Mac: the Wine prefix the games run in, with Plutonium.
 #
+#   setup-prefix.sh init                    new prefix only (no Plutonium)
 #   setup-prefix.sh create <game folder>    new prefix; installs Plutonium with
 #                                           the game folder's plutonium.exe
 #   setup-prefix.sh import <prefix>         copy an existing prefix (keeps the
@@ -35,6 +36,16 @@ install_plutonium() {
 }
 
 case "${1:-}" in
+init)
+  # a prefix without Plutonium (Black Ops III for Windows through boiii)
+  if [ ! -f "$WINEPREFIX/system.reg" ]; then
+    step "Creating the Wine prefix"
+    "$wine" wineboot --init > "$home/logs/wineboot.log" 2>&1
+    "$WINESERVER" -w 2>/dev/null
+    [ -f "$WINEPREFIX/system.reg" ] || die "Wine could not create the prefix (see logs/wineboot.log)"
+  fi
+  step "Prefix ready"
+  ;;
 create)
   game=${2:-}
   [ -d "$game/zone" ] || die "pick the game folder (the one with zone/ and plutonium.exe)"
@@ -61,6 +72,6 @@ plutonium)
   install_plutonium "${2:-}"
   ;;
 *)
-  die "usage: setup-prefix.sh create <game folder> | import <prefix> | plutonium <game folder>"
+  die "usage: setup-prefix.sh init | create <game folder> | import <prefix> | plutonium <game folder>"
   ;;
 esac

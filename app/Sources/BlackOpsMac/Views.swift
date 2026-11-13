@@ -129,7 +129,7 @@ struct GameDetail: View {
                 .foregroundStyle(.white)
 
                 switch game {
-                case .bo1, .bo2: PlutoniumGameView(game: game)
+                case .bo1, .bo2, .boiii: PlutoniumGameView(game: game)
                 case .bo3: BO3View()
                 case .waw: ComingSoonView()
                 }
@@ -281,13 +281,26 @@ struct SetupChecklist: View {
             Check(done: state.rosettaInstalled, title: "Rosetta 2",
                   detail: "Run in Terminal: softwareupdate --install-rosetta --agree-to-license")
             Check(done: state.engineInstalled, title: "Black Ops Mac engine",
-                  detail: "Downloads the Wine runtime of CrossOver 26.3 from CodeWeavers (nothing else to install) and adds our patches. About 400 MB.") {
+                  detail: "Downloads our engine, built from open source, and adds our patches. About 330 MB.") {
                 Button("Install") { state.installEngine() }.disabled(state.progress != nil)
             }
             Check(done: state.folder(for: game) != nil, title: "\(game.title) game folder",
-                  detail: "The folder with zone/ and plutonium.exe inside.") {
+                  detail: game == .boiii ? "The Windows game's folder, with BlackOps3.exe and zone/ inside."
+                                         : "The folder with zone/ and plutonium.exe inside.") {
                 Button("Choose…") { state.chooseFolder(for: game) }
             }
+            if game == .boiii {
+                Check(done: state.prefixReady, title: "Wine prefix",
+                      detail: "Where Windows programs keep their settings (shared with Black Ops and Black Ops II).") {
+                    Button("Create") { state.createEmptyPrefix() }
+                        .disabled(!state.engineInstalled || state.progress != nil)
+                }
+                Check(done: state.boiiiInstalled, title: "boiii.exe (BOIII / Ezz client)",
+                      detail: "The community client for the Windows game, from github.com/Ezz-lol/boiii-free (checked against its SHA-256), into the game folder.") {
+                    Button("Download") { state.downloadBoiii() }
+                        .disabled(state.folder(for: game) == nil || state.progress != nil)
+                }
+            } else {
             Check(done: state.prefixReady && state.plutoniumInstalled, title: "Plutonium",
                   detail: candidates.isEmpty
                       ? "Installs Plutonium: sign in when its window opens, then close it."
@@ -310,6 +323,7 @@ struct SetupChecklist: View {
                     }
                     .disabled(!state.engineInstalled || state.folder(for: game) == nil || state.progress != nil)
                 }
+            }
             }
         }
         .padding(20)
@@ -515,7 +529,12 @@ struct EngineFooter: View {
                     }
                 }
             }
-            Button("Show log") { showLog = true }.font(.system(size: 10)).buttonStyle(.link)
+            HStack(spacing: 10) {
+                Button("Show log") { showLog = true }
+                Text("·").foregroundStyle(.tertiary)
+                Button("Check for Updates") { state.checkForAppUpdate(manual: true) }
+            }
+            .font(.system(size: 10)).buttonStyle(.link)
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
     }
