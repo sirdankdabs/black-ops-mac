@@ -73,7 +73,9 @@ Choose your game folder, press Install, press Play. Best on macOS 15 Sequoia or 
   - *Execution on demand*: Plutonium turns off DEP, which made Wine mark the whole game executable at once and Rosetta re-check it constantly (BO2 ran in slow motion). Pages are now made executable when they are first run.
   - *x87 acceleration*: hand-off to athei's **x87sidecar**, which runs the games' x87 floating-point maths as native ARM code.
 - **Controllers, with vibration and without input lag** — Wine waited for every rumble write twice (in XInput and in its HID bus driver, which held the controller's lock during a Bluetooth/USB round trip), and games change vibration almost every frame while firing: vibration now goes out on its own, at most 25 times a second, so it never holds up the controller's input.
-- **Raw mouse input, no stick acceleration, 0.08 deadzone, direct fullscreen at native resolution, macOS Game Mode.**
+- **Raw mouse input, smooth mouse look, console controller aim (acceleration, console turn speeds, aim assist), 0.08 deadzone, direct fullscreen at native resolution, macOS Game Mode.**
+  - *Smooth mouse look*: Wine normally moves the macOS cursor back to the centre every frame while you aim, which costs WindowServer work and drops mouse movement (stutter with 1000 Hz mice). BO-Mac's engine detaches the hidden cursor instead and sends every movement straight to the game (kit/patches/wine-winemac-mouselook.patch).
+  - *1x display mode*: on a HiDPI (scaled) display, the screen switches to a 1x mode of the game's resolution before the game starts and stays there until it closes, so macOS does not scale every frame.
 - **Voice chat**: the app asks for microphone access once, so games never hang waiting for macOS's answer.
 - **Every patch can be switched off** in each game's settings, with an ⓘ explaining what it does.
 - **Plutonium's folder picker** opens with shortcuts to your Mac home, Downloads, Documents and the game folders.

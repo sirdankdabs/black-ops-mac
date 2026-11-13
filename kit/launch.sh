@@ -14,7 +14,7 @@
 #   BO1_DIR, BO2_DIR   game folders
 #   MAXFPS             frame-rate cap (default: the display's refresh rate; 0: none)
 #   X87=0              no x87 acceleration
-#   AIM_ACCEL=1        keep the games' stick turn acceleration (default: off)
+#   CONSOLE_AIM=0      leave the games' controller aim settings as they are
 #   STICK_DEADZONE     stick deadzone (default 0.08)
 #   RAW_INPUT=0        keep the games' raw_input (default: on)
 #   STREAM=1           keep BO1's texture streaming (default: off)
@@ -86,6 +86,43 @@ else
   [ "$t" != t6c ] || [ -f "$dir/t6sp.exe" ] || die "the Black Ops II campaign folder has no t6sp.exe"
 fi
 stop_all
+
+# Fullscreen (1) or fullscreen window (2): a 1x display mode of the game's
+# resolution while it runs, so a HiDPI-scaled desktop does not make macOS
+# scale every frame (WindowServer at 100%, dropped frames, heavy-feeling aim).
+# - Before any Wine process: Wine records the desktop's mode when it starts
+#   and, for a fullscreen game at that size, switches back to it (the scaled
+#   one) if it recorded the scaled mode.
+# - Until the game ends, not this script: in online mode this process becomes
+#   Plutonium's launcher, which closes as soon as it has started the game.
+held_1x=
+hold_1x() { # <game cfg>
+  [ -z "$held_1x" ] && [ "${DISPLAY_MODE:-1}" != 0 ] && [ -f "$1" ] &&
+    grep -qE '^seta r_fullscreen "[12]"' "$1" || return 0
+  local res log="$home/logs/displaymode.log" size i launch_pid=$$
+  res=$(sed -n -E 's/^seta r_mode "([0-9]+)x([0-9]+)"/\1 \2/p' "$1")
+  [ -n "$res" ] || return 0
+  ( while kill -0 "$launch_pid" 2>/dev/null; do sleep 2; done
+    sleep 3   # the launcher may close a moment before the game window is up
+    while pgrep -qf 'plutonium-bootstrapper-win32\.exe'; do sleep 2; done
+  ) > /dev/null 2>&1 &
+  size=$(stat -f %z "$log" 2>/dev/null || echo 0)
+  # shellcheck disable=SC2086
+  "$kit/tools/displaymode" $res $! >> "$log" 2>&1 &
+  held_1x=1
+  for i in $(seq 25); do   # wait (up to 5 s) for the switch
+    [ "$(stat -f %z "$log" 2>/dev/null || echo 0)" != "$size" ] && break
+    sleep 0.2
+  done
+}
+case "$t:$mode" in
+  t6:mp) hold_1x "$plutonium/storage/t6/players/plutonium_mp.cfg" ;;
+  t6:*) hold_1x "$plutonium/storage/t6/players/plutonium_zm.cfg" ;;
+  t5:mp) hold_1x "$plutonium/storage/t5/players/config_mp.cfg" ;;
+  t5:*) hold_1x "$plutonium/storage/t5/players/config.cfg" ;;
+  t4:mp) hold_1x "$plutonium/storage/t4/players/profiles/\$\$\$/config_mp.cfg" ;;
+  t4:*) hold_1x "$plutonium/storage/t4/players/profiles/\$\$\$/config.cfg" ;;
+esac
 
 # --- Environment for the games ---------------------------------------------
 # Plutonium starts the games with an environment built from HKCU\Environment.
@@ -397,7 +434,18 @@ common_cvars() {
     if [ "$rmode" = 800 ] || { [ -n "$rmode" ] && [ "$rmode" -gt "${desktop%x*}" ]; }; then set_cvar "$1" r_mode "$desktop"; fi
   fi
   if [ "${RAW_INPUT:-1}" = 1 ]; then set_or_add "$1" raw_input 1; set_cvar "$1" m_filter 0; fi
-  if [ "${AIM_ACCEL:-0}" = 0 ]; then set_or_add "$1" aim_accel_turnrate_enabled 0; fi
+  # Controller aim as on the consoles: turn acceleration, the console turn
+  # rates (260/90 degrees/s left-right/up-down, 90/55 aiming down sights) and
+  # aim assist (slowdown and lock-on over targets). Mouse aim is not affected.
+  if on CONSOLE_AIM; then
+    local v
+    for v in aim_accel_turnrate_enabled=1 aim_accel_turnrate_lerp=1200 aim_input_graph_enabled=1 \
+             aim_input_graph_index=3 aim_scale_view_axis=1 aim_turnrate_yaw=260 aim_turnrate_pitch=90 \
+             aim_turnrate_yaw_ads=90 aim_turnrate_pitch_ads=55 aim_autoaim_enabled=1 \
+             aim_lockon_enabled=1 aim_slowdown_enabled=1; do
+      set_or_add "$1" "${v%%=*}" "${v#*=}"
+    done
+  fi
   set_or_add "$1" gpad_stick_deadzone_min "${STICK_DEADZONE:-0.08}"
   set_or_add "$1" cl_mouseAccel 0
 }
@@ -494,13 +542,7 @@ else
   gamecfg="$players/plutonium_zm.cfg"; [ "$mode" = mp ] && gamecfg="$players/plutonium_mp.cfg"
 fi
 
-# Fullscreen: a 1x display mode of the game's resolution while it runs, so a
-# HiDPI-scaled desktop does not make macOS compose every frame at 2x.
-if on DISPLAY_MODE && [ -f "$gamecfg" ] && grep -q '^seta r_fullscreen "1"' "$gamecfg"; then
-  res=$(sed -n -E 's/^seta r_mode "([0-9]+)x([0-9]+)"/\1 \2/p' "$gamecfg")
-  # shellcheck disable=SC2086
-  [ -n "$res" ] && "$kit/tools/displaymode" $res $$ >> "$home/logs/displaymode.log" 2>&1 &
-fi
+hold_1x "$gamecfg"
 
 log="$home/logs/$game-$mode.log"
 if [ "$mode" = online ]; then

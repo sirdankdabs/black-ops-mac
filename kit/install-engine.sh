@@ -159,6 +159,12 @@ if [ -z "$own" ]; then   # our engine has it built in
   cp "$kit/payload/x86_64-unix/ntdll.so" "$L/x86_64-unix/ntdll.so"
   codesign -fs - "$L/x86_64-unix/ntdll.so" 2>/dev/null
 fi
+# winemac.so (patches/wine-winemac-mouselook.patch): mouse look without
+# warping the cursor every frame; built with our engine, so ours only
+if [ -n "$own" ]; then
+  cp "$kit/payload/x86_64-unix/winemac.so" "$L/x86_64-unix/winemac.so"
+  codesign -fs - "$L/x86_64-unix/winemac.so" 2>/dev/null
+fi
 # ntdll.dll: WINE_HIDE_WINE_EXPORTS (boiii's Workshop downloads), same build as ntdll.so
 cp "$kit/payload/x86_64-windows/ntdll.dll" "$L/x86_64-windows/ntdll.dll"
 cp "$kit/payload/i386-windows/ntdll.dll" "$L/i386-windows/ntdll.dll"
