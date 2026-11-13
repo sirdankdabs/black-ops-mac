@@ -48,6 +48,14 @@ if [ -f "$home/settings.conf" ]; then
 fi
 engine="$home/engine"
 export WINEPREFIX="$home/prefix" CX_ROOT="$engine" WINESERVER="$engine/bin/wineserver"
+# Black Ops II's campaign has its own prefix, with Windows Steam (bo2-campaign.sh)
+if [ "${1:-}" = bo2c ]; then
+  export WINEPREFIX="$home/prefix-bo2c"
+  # its Steam stays open: its Wine server runs through a link outside the
+  # engine folder, so the app doesn't count it as a game running
+  mkdir -p "$home/campaign"; ln -sfn "$engine/bin/wineserver" "$home/campaign/wineserver"
+  export WINESERVER="$home/campaign/wineserver"
+fi
 export WINEDLLPATH="$engine/lib/wine/x86_64-windows:$engine/lib/wine/x86_64-unix"
 export WINEMSYNC=1 WINEDEBUG=${WINEDEBUG:--all} WINEDLLOVERRIDES="mscoree,mshtml="
 wine="$engine/lib/wine/x86_64-unix/wine"
@@ -58,7 +66,7 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 stop_all() { "$WINESERVER" -k 2>/dev/null; "$WINESERVER" -w 2>/dev/null; }
 
 game=${1:-}; mode=${2:-}
-[ "$game" = stop ] && { stop_all; exit 0; }
+[ "$game" = stop ] && { stop_all; WINEPREFIX="$home/prefix-bo2c" "$WINESERVER" -k 2>/dev/null; exit 0; }
 [ -x "$wine" ] || die "the engine is not installed"
 [ -d "$WINEPREFIX/drive_c" ] || die "the Wine prefix is not set up"
 case "$game:$mode" in
@@ -66,14 +74,16 @@ case "$game:$mode" in
   bo2:online|bo2:zombies|bo2:mp|bo2:declassified) dir=${BO2_DIR:-} t=t6 ;;
   boiii:play) dir=${BOIII_DIR:-} t=t7 GAME_ARGS=${GAME_ARGS---launch} ;;
   boiii:launcher) dir=${BOIII_DIR:-} t=t7 ;;
+  bo2c:play) dir=${BO2C_DIR:-} t=t6c ;;
   *) die "usage: launch.sh bo1|bo2 online|zombies|campaign|mp [name], launch.sh boiii play|launcher, or launch.sh stop" ;;
 esac
 if [ "$t" = t7 ]; then
   [ -n "$dir" ] && [ -f "$dir/boiii.exe" ] || die "the Black Ops III (Windows) folder is not set (or has no boiii.exe)"
 else
   [ -n "$dir" ] && [ -d "$dir/zone" ] || die "the $game game folder is not set (or has no zone folder)"
+  [ "$t" != t6c ] || [ -f "$dir/t6sp.exe" ] || die "the Black Ops II campaign folder has no t6sp.exe"
 fi
-stop_all
+[ "$t" = t6c ] || stop_all   # the campaign keeps its Steam signed in
 
 # --- Environment for the games ---------------------------------------------
 # Plutonium starts the games with an environment built from HKCU\Environment.
@@ -85,7 +95,7 @@ read -r dw dh hz < <("$kit/tools/displaymode" current 2>/dev/null || true)
 maxfps=${MAXFPS:-${hz:-0}}
 if [ "${X87:-1}" = 1 ] && [ -x "$engine/bin/x87sidecar" ]; then
   set_env X87_SIDECAR_PATH "$engine/bin/x87sidecar"
-  set_env X87_SIDECAR_PROGRAMS plutonium-bootstrapper-win32.exe
+  if [ "$t" = t6c ]; then set_env X87_SIDECAR_PROGRAMS t6sp.exe; else set_env X87_SIDECAR_PROGRAMS plutonium-bootstrapper-win32.exe; fi
 else
   clear_env X87_SIDECAR_PATH; clear_env X87_SIDECAR_PROGRAMS
 fi
@@ -138,7 +148,7 @@ if on CAPTURE_DISPLAY; then reg add "$bootstrapper\\Mac Driver" /v CaptureDispla
 else reg add "$bootstrapper\\Mac Driver" /v CaptureDisplaysForFullscreen /d n /f; fi
 # The Plutonium launcher's window is drawn with OpenGL.
 reg add 'HKCU\Software\Wine\AppDefaults\plutonium-launcher-win32.exe\Direct3D' /v renderer /d gl /f
-"$WINESERVER" -w 2>/dev/null
+[ "$t" = t6c ] || "$WINESERVER" -w 2>/dev/null   # the campaign's Steam never exits
 
 # --- macOS input ----------------------------------------------------------------
 # Holding a key (W, A, S, D…) would open macOS's accent menu in the game's window:
@@ -158,6 +168,40 @@ if [ -d "$wdesk" ] && [ ! -L "$wdesk" ]; then
   [ -d "${BOIII_DIR:-}" ] && ln -sfn "$BOIII_DIR" "$wdesk/Black Ops III" || rm -f "$wdesk/Black Ops III"
 fi
 [ -e "$WINEPREFIX/dosdevices/h:" ] || ln -s "$HOME" "$WINEPREFIX/dosdevices/h:"
+
+# --- Black Ops II's campaign (t6sp.exe, Steam copy) --------------------------------
+# Same Direct3D 11 -> Metal setup as Black Ops II through Plutonium (DXMT,
+# background pipelines, frame pacing, set above), in its own prefix where
+# Windows Steam is signed in: the game's Steam DRM needs it running.
+if [ "$t" = t6c ]; then
+  if on CAPTURE_DISPLAY; then reg add 'HKCU\Software\Wine\AppDefaults\t6sp.exe\Mac Driver' /v CaptureDisplaysForFullscreen /d y /f
+  else reg add 'HKCU\Software\Wine\AppDefaults\t6sp.exe\Mac Driver' /v CaptureDisplaysForFullscreen /d n /f; fi
+  camp="$kit/bo2-campaign.sh"
+  bash "$camp" library "$dir" || exit 1
+  # Steam usually runs already (the app starts it in the background): it
+  # signs in on its own with the remembered account
+  bash "$camp" steam -silent || exit 1
+  bash "$camp" wait || exit 1
+  # started from here rather than from Steam's library: tell the Steam API which game it is
+  [ -f "$dir/steam_appid.txt" ] || printf '202970' > "$dir/steam_appid.txt"
+  # a hardware profile made on an Apple GPU (fullscreen 1920x1080), once, as for BO2
+  if on BO2_HW_PROFILE && [ ! -f "$dir/players/.bom-defaults-hardware" ]; then
+    mkdir -p "$dir/players"
+    cp "$kit/payload/bo2/hardware.chp" "$dir/players/hardware.chp" && : > "$dir/players/.bom-defaults-hardware"
+  fi
+  # The game's Steam DRM hands the start to Steam, which runs t6sp.exe again
+  # from its library: follow that process (display mode, "running" in the app)
+  cd "$dir" || exit 1
+  "$wine" t6sp.exe > "$home/logs/bo2c-play.log" 2>&1
+  game_pid=""
+  for _ in $(seq 1 60); do game_pid=$(pgrep -f 't6sp\.exe' | tail -1); [ -n "$game_pid" ] && break; sleep 1; done
+  [ -n "$game_pid" ] || die "the campaign did not start (see logs/bo2c-play.log)"
+  if on DISPLAY_MODE && [ -n "${dw:-}" ] && [ -n "${dh:-}" ]; then
+    "$kit/tools/displaymode" "$dw" "$dh" "$game_pid" >> "$home/logs/displaymode.log" 2>&1 &
+  fi
+  while kill -0 "$game_pid" 2>/dev/null; do sleep 2; done
+  exit 0
+fi
 
 # --- Black Ops III for Windows through boiii (BOIII / Ezz client) ----------------
 # boiii.exe sits in the game folder and starts the game from there (it is the

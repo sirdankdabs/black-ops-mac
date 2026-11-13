@@ -7,13 +7,14 @@ import UniformTypeIdentifiers
 // MARK: - Games
 
 enum Game: String, CaseIterable, Identifiable {
-    case bo1, bo2, bo3, boiii, waw
+    case bo1, bo2, bo2c, bo3, boiii, waw
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .bo1: "T5 - BOI"
         case .bo2: "T6 - BOII"
+        case .bo2c: "T6 - BOII (Campaign)"
         case .bo3: "T7 - BOIII (Mac Version)"
         case .boiii: "T7 - BOIII (Windows Version)"
         case .waw: "T4 - WaW"
@@ -23,6 +24,7 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: "Plutonium · Zombies, Campaign, Multiplayer"
         case .bo2: "Plutonium · Zombies, Multiplayer"
+        case .bo2c: "Steam · Campaign"
         case .bo3: "Native Mac game · community servers"
         case .boiii: "BOIII · Ezz community servers"
         case .waw: "Coming soon"
@@ -32,6 +34,7 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: "1.circle.fill"
         case .bo2: "2.circle.fill"
+        case .bo2c: "2.square.fill"
         case .bo3: "3.circle.fill"
         case .boiii: "3.square.fill"
         case .waw: "clock.fill"
@@ -41,6 +44,7 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: [Color(red: 0.20, green: 0.55, blue: 0.95), Color(red: 0.04, green: 0.12, blue: 0.35)]
         case .bo2: [Color(red: 0.92, green: 0.18, blue: 0.20), Color(red: 0.30, green: 0.04, blue: 0.06)]
+        case .bo2c: [Color(red: 0.92, green: 0.18, blue: 0.20), Color(red: 0.30, green: 0.04, blue: 0.06)]
         case .bo3: [Color(red: 0.98, green: 0.52, blue: 0.10), Color(red: 0.35, green: 0.12, blue: 0.03)]
         case .boiii: [Color(red: 0.98, green: 0.52, blue: 0.10), Color(red: 0.35, green: 0.12, blue: 0.03)]
         case .waw: [Color(red: 0.55, green: 0.55, blue: 0.50), Color(red: 0.15, green: 0.15, blue: 0.13)]
@@ -51,11 +55,12 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: "BO1_DIR"
         case .bo2: "BO2_DIR"
+        case .bo2c: "BO2C_DIR"
         case .boiii: "BOIII_DIR"
         default: nil
         }
     }
-    var usesEngine: Bool { self == .bo1 || self == .bo2 || self == .boiii }
+    var usesEngine: Bool { self == .bo1 || self == .bo2 || self == .bo2c || self == .boiii }
     var usesPlutonium: Bool { self == .bo1 || self == .bo2 }
 }
 
@@ -75,6 +80,7 @@ extension Game {
         case .bo2: [PlayMode(id: "online", title: "Play Online", symbol: "globe"),
                     PlayMode(id: "zombies", title: "Zombies", symbol: "figure.walk"),
                     PlayMode(id: "mp", title: "Multiplayer", symbol: "person.3.fill")]
+        case .bo2c: [PlayMode(id: "play", title: "Play Campaign", symbol: "flag.fill")]
         case .boiii: [PlayMode(id: "launcher", title: "Open BOIII", symbol: "play.fill"),
                       PlayMode(id: "play", title: "Play Directly", symbol: "bolt.fill")]
         default: []
@@ -100,13 +106,13 @@ extension Patch {
         // Both games
         Patch(key: "X87", title: "x87 acceleration",
               info: "Runs the games' old x87 floating-point maths as native ARM code with athei's x87sidecar (based on Lifeisawful's rosettax87), instead of Rosetta's slow emulation. The biggest frame-rate gain.",
-              games: [.bo1, .bo2]),
+              games: [.bo1, .bo2, .bo2c]),
         Patch(key: "EXEC_ON_DEMAND", title: "Fast code execution",
               info: "Plutonium turns off DEP, so Wine would make the game's whole memory executable at once, which makes Rosetta re-check it constantly (BO2 ran in slow motion). Our engine makes each page executable only when it is first run.",
-              games: [.bo1, .bo2, .boiii]),
+              games: [.bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "RUMBLE_FIX", title: "Controller vibration without input delay",
               info: "Every vibration command is a round trip to the controller, and Wine made the controller's input wait for it twice: in XInput (the game waited too) and in its HID bus driver (winebus), which held the device lock during the write and so held back every stick and button report. Aiming and shooting lagged whenever the controller rumbled. Ours sends vibration from its own thread and writes it without blocking input.",
-              games: [.bo1, .bo2, .boiii]),
+              games: [.bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "RAW_INPUT", title: "Raw mouse input",
               info: "Reads the mouse directly, without macOS pointer acceleration or smoothing, so aim follows your hand 1:1.",
               games: [.bo1, .bo2]),
@@ -115,10 +121,10 @@ extension Patch {
               games: [.bo1, .bo2]),
         Patch(key: "CAPTURE_DISPLAY", title: "Direct fullscreen",
               info: "In fullscreen the game takes over the display, so macOS shows its frames directly instead of compositing them with the desktop: lower latency and steadier frame times.",
-              games: [.bo1, .bo2, .boiii]),
+              games: [.bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "DISPLAY_MODE", title: "Native display mode in fullscreen",
               info: "While the game runs fullscreen, the display switches to a 1x mode of the game's resolution, so a scaled (HiDPI) desktop does not make macOS draw every frame at twice the size.",
-              games: [.bo1, .bo2, .boiii]),
+              games: [.bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "MSAA_FIX", title: "Supported anti-aliasing",
               info: "Apple GPUs support up to 4x MSAA; higher settings in the games' configs are lowered to 4x so the game does not fall back or render wrongly.",
               games: [.bo1, .bo2]),
@@ -150,13 +156,13 @@ extension Patch {
         // Black Ops II
         Patch(key: "BO2_ASYNC", title: "Background shader compilation",
               info: "DXMT compiles new Metal pipelines on separate threads instead of stopping the frame that needs them.",
-              games: [.bo2, .boiii]),
+              games: [.bo2, .bo2c, .boiii]),
         Patch(key: "BO2_FRAME_PACING", title: "Frame pacing",
               info: "DXMT paces frames evenly at the frame-rate cap (the monitor's refresh rate by default) instead of letting them bunch up.",
-              games: [.bo2, .boiii]),
+              games: [.bo2, .bo2c, .boiii]),
         Patch(key: "BO2_HW_PROFILE", title: "Safe hardware profile",
               info: "Starts Black Ops II with a blank hardware profile so it detects settings Apple GPUs support (otherwise it can pick 8x MSAA, which they do not have).",
-              games: [.bo2]),
+              games: [.bo2, .bo2c]),
         // Black Ops III (Windows)
         Patch(key: "BOIII_GRAPHICS", title: "Full-detail first start",
               info: "On its first start Black Ops III's auto-detect does not know Apple GPUs and picks half resolution with no shadows. Instead it starts fullscreen at your display's size and refresh rate with full resolution, shadows, volumetric lighting, ambient occlusion and SMAA. Only once: the game's own options rule afterwards.",
@@ -271,6 +277,7 @@ final class AppState: ObservableObject {
             running = settings["LAST_GAME"].flatMap(Game.init(rawValue:)) ?? .bo1
             watchUntilStopped()
         }
+        refreshCampaignSteam()
     }
 
     // Statuses
@@ -333,12 +340,42 @@ final class AppState: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         runScript("boiii.sh", ["restore", url.path], title: "Restoring your BOIII stats")
     }
+    /// Black Ops II's campaign: Windows Steam in its own prefix (bo2-campaign.sh)
+    @Published var campaignSteam: [String: String] = [:]
+    func refreshCampaignSteam() {
+        Task.detached {
+            var d: [String: String] = [:]
+            for line in Self.capture("bo2-campaign.sh", ["status"]).split(separator: "\n") {
+                let p = line.split(separator: "=", maxSplits: 1)
+                if p.count == 2 { d[String(p[0])] = String(p[1]) }
+            }
+            let result = d
+            await MainActor.run { self.campaignSteam = result }
+        }
+    }
+    func setupCampaignSteam() {
+        runScript("bo2-campaign.sh", ["setup"], title: "Installing Steam for the campaign") { [weak self] in self?.watchCampaignSignIn() }
+    }
+    func openCampaignSteam() {
+        runScript("bo2-campaign.sh", ["steam"], title: nil) { [weak self] in self?.watchCampaignSignIn() }
+    }
+    /// Sign-in happens in Steam's own window: check every few seconds for a while.
+    private func watchCampaignSignIn() {
+        Task { @MainActor in
+            for _ in 0..<120 {
+                refreshCampaignSteam()
+                if campaignSteam["signedin"] == "yes" { break }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
     func createEmptyPrefix() { runScript("setup-prefix.sh", ["init"], title: "Creating the Wine prefix") }
 
     func isReady(_ game: Game) -> Bool {
         switch game {
         case .bo1, .bo2: engineInstalled && prefixReady && plutoniumInstalled && folder(for: game) != nil
         case .boiii: engineInstalled && prefixReady && folder(for: game) != nil && boiiiInstalled
+        case .bo2c: engineInstalled && campaignSteam["steam"] == "installed" && folder(for: game) != nil
         case .bo3: bo3Installed
         case .waw: false
         }
@@ -363,6 +400,20 @@ final class AppState: ObservableObject {
         settings[key] = url.path
         settings.save()
         refreshToken += 1
+        if game == .bo2c { startCampaignSteam() }
+    }
+
+    /// The campaign's Steam, started in the background (signs in by itself
+    /// once you have signed in): the game starts without waiting for it.
+    func startCampaignSteam() {
+        guard campaignSteam["steam"] == "installed" || FileManager.default.fileExists(atPath:
+                Paths.prefix.deletingLastPathComponent().appendingPathComponent("prefix-bo2c/drive_c/Program Files (x86)/Steam/Steam.exe").path) else { return }
+        let folder = settings["BO2C_DIR"]
+        Task.detached {
+            if let folder { _ = Self.capture("bo2-campaign.sh", ["library", folder]) }
+            _ = Self.capture("bo2-campaign.sh", ["steam", "-silent"])
+            await MainActor.run { self.refreshCampaignSteam() }
+        }
     }
 
     func installEngine() { runScript("install-engine.sh", [], title: "Installing the engine") }
@@ -445,9 +496,10 @@ final class AppState: ObservableObject {
         settings.save()
         let name = settings["PLAYER_NAME"] ?? "Player"
         runScript("launch.sh", [game.rawValue, mode.id, name], title: nil) { [weak self] in
-            // The Plutonium launcher may exit while the game it started
-            // keeps running: the game is over when the engine's Wine is.
-            self?.watchUntilStopped()
+            // The campaign's launch waits for the game itself (its Steam
+            // stays open). The Plutonium launcher may exit while the game it
+            // started keeps running: the game is over when the engine's Wine is.
+            if game == .bo2c { self?.running = nil } else { self?.watchUntilStopped() }
         }
     }
 
@@ -459,13 +511,18 @@ final class AppState: ObservableObject {
 
     /// Wine processes running from our engine.
     nonisolated static var engineRunning: Bool {
+        // the campaign's Steam stays open in the background: not a game
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        p.arguments = ["-f", Paths.engine.path + "/"]
-        p.standardOutput = Pipe()
+        p.arguments = ["-fl", Paths.engine.path + "/"]
+        let out = Pipe()
+        p.standardOutput = out
         try? p.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
-        return p.terminationStatus == 0
+        return String(decoding: data, as: UTF8.self).split(separator: "\n").contains {
+            !$0.contains("Steam.exe") && !$0.contains("steamwebhelper") && !$0.contains("steamerrorreporter")
+        }
     }
 
     private func watchUntilStopped() {

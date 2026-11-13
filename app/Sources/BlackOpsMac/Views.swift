@@ -71,7 +71,8 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: state.settingsGame)
-        .onChange(of: selection) { state.settingsGame = nil }
+        .onChange(of: selection) { state.settingsGame = nil; if selection == .bo2c { state.startCampaignSteam() } }
+        .onAppear { if selection == .bo2c { state.startCampaignSteam() } }
         .alert("Something went wrong", isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })) {
             Button("OK") { state.error = nil }
             Button("Show log") { state.error = nil; showLog = true }
@@ -130,7 +131,7 @@ struct GameDetail: View {
                 .foregroundStyle(.white)
 
                 switch game {
-                case .bo1, .bo2, .boiii: PlutoniumGameView(game: game)
+                case .bo1, .bo2, .bo2c, .boiii: PlutoniumGameView(game: game)
                 case .bo3: BO3View()
                 case .waw: ComingSoonView()
                 }
@@ -295,10 +296,22 @@ struct SetupChecklist: View {
             }
             Check(done: state.folder(for: game) != nil, title: "\(game.title) game folder",
                   detail: game == .boiii ? "The Windows game's folder, with BlackOps3.exe and zone/ inside."
-                                         : "The folder with zone/ and plutonium.exe inside.") {
+                        : game == .bo2c ? "Your Steam copy's folder, with t6sp.exe inside (e.g. Steam/steamapps/common/Call of Duty Black Ops II). Downloaded with the Mac Steam app is fine."
+                        : "The folder with zone/ and plutonium.exe inside.") {
                 Button("Choose…") { state.chooseFolder(for: game) }
             }
-            if game == .boiii {
+            if game == .bo2c {
+                Check(done: state.campaignSteam["steam"] == "installed", title: "Steam for Windows (campaign only)",
+                      detail: "The campaign's Steam DRM needs the Steam client. Installs Valve's Steam for Windows in the campaign's own Wine prefix (the other games are not touched).") {
+                    Button("Install") { state.setupCampaignSteam() }
+                        .disabled(!state.engineInstalled || state.progress != nil)
+                }
+                Check(done: state.campaignSteam["signedin"] == "yes", title: "Sign in to Steam",
+                      detail: "Once. Steam's window may stay black: click it, type your user name, press Tab, your password, Enter (approve Steam Guard on your phone). It remembers you after that.") {
+                    Button("Open Steam") { state.openCampaignSteam() }
+                        .disabled(state.campaignSteam["steam"] != "installed" || state.progress != nil)
+                }
+            } else if game == .boiii {
                 Check(done: state.prefixReady, title: "Wine prefix",
                       detail: "Where Windows programs keep their settings (shared with Black Ops and Black Ops II).") {
                     Button("Create") { state.createEmptyPrefix() }
