@@ -172,6 +172,9 @@ extension Patch {
         Patch(key: "BOIII_GRAPHICS", title: "Full-detail first start",
               info: "On its first start Black Ops III's auto-detect does not know Apple GPUs and picks half resolution with no shadows. Instead it starts fullscreen at your display's size and refresh rate with full resolution, shadows, volumetric lighting, ambient occlusion and SMAA. Only once: the game's own options rule afterwards.",
               games: [.boiii]),
+        Patch(key: "BOIII_SAFE_LUA", title: "Ask before unsafe Lua",
+              info: "Some Workshop mods and modded servers use \"unsafe\" Lua functions: reading and writing files, running system commands, loading DLLs. boiii asks first (\"Unsafe Lua Function Called\"). Turning this off starts boiii with -unsafe-lua, so those mods just work without asking, but any mod from any server can then use them, and under Wine that reaches your whole Mac (drive Z:). Only turn it off if you trust the servers and mods you play.",
+              games: [.boiii]),
     ]
 
     static func `for`(_ game: Game) -> [Patch] { all.filter { $0.games.contains(game) } }
@@ -574,12 +577,38 @@ final class AppState: ObservableObject {
     private func offerUpdate(_ release: Release) {
         let alert = NSAlert()
         alert.messageText = "BO-Mac \(release.version) is available"
-        var notes = release.notes.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "### ", with: "")
-        if notes.count > 900 { notes = String(notes.prefix(900)) + "…" }
-        alert.informativeText = "You have \(appVersion).\n\n\(notes)"
+        alert.informativeText = "You have \(appVersion). What's new:"
+        // the release notes, as plain text in a scrolling box
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 420, height: 220))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let text = NSTextView(frame: scroll.bounds)
+        text.isEditable = false
+        text.font = .systemFont(ofSize: 12)
+        text.textContainerInset = NSSize(width: 6, height: 6)
+        text.autoresizingMask = [.width]
+        text.string = Self.plainNotes(release.notes)
+        scroll.documentView = text
+        alert.accessoryView = scroll
         alert.addButton(withTitle: "Update")
         alert.addButton(withTitle: "Later")
         if alert.runModal() == .alertFirstButtonReturn { installUpdate(release) }
+    }
+
+    /// GitHub release notes (Markdown) as plain text for the update window.
+    nonisolated static func plainNotes(_ md: String) -> String {
+        var lines: [String] = []
+        for raw in md.components(separatedBy: "\n") {
+            var l = raw.trimmingCharacters(in: .whitespaces)
+            while l.hasPrefix("#") { l.removeFirst() }
+            l = l.trimmingCharacters(in: .whitespaces)
+            if l.hasPrefix("- ") || l.hasPrefix("* ") { l = "•  " + l.dropFirst(2) }
+            l = l.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+            // [text](url) -> text
+            l = l.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]+\)"#, with: "$1", options: .regularExpression)
+            lines.append(l)
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     nonisolated static func latestRelease() -> Release? {

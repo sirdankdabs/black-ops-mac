@@ -1,0 +1,42 @@
+ntdll: WINE_HIDE_WINE_EXPORTS=1 hides Wine's wine_get_* functions from GetProcAddress,
+so a program takes its Windows code paths. Built into the PE ntdll.dll in kit/payload.
+
+--- a/dlls/ntdll/loader.c	2026-11-13 10:38:58
++++ b/dlls/ntdll/loader.c	2026-11-13 10:38:58
+@@ -2081,7 +2081,27 @@
+     }
+     return STATUS_SUCCESS;
+ }
++
+ 
++/* BO-Mac: with WINE_HIDE_WINE_EXPORTS=1 a program does not find Wine's own
++ * wine_get_* functions, so it takes its Windows code paths (boiii takes Wine
++ * for Linux and fetches a Linux SteamCMD, which cannot run on macOS) */
++static BOOL hide_wine_exports( const ANSI_STRING *name )
++{
++    static int hide = -1;
++    if (!name || !name->Buffer || strncmp( name->Buffer, "wine_get_", 9 )) return FALSE;
++    if (hide < 0)
++    {
++        UNICODE_STRING var, val;
++        WCHAR buf[4];
++        RtlInitUnicodeString( &var, L"WINE_HIDE_WINE_EXPORTS" );
++        val.Buffer = buf;
++        val.MaximumLength = sizeof(buf);
++        val.Length = 0;
++        hide = !RtlQueryEnvironmentVariable_U( NULL, &var, &val ) && val.Length && buf[0] == '1';
++    }
++    return hide;
++}
+ 
+ /******************************************************************
+  *		LdrGetProcedureAddress  (NTDLL.@)
+@@ -2093,6 +2113,8 @@
+     WINE_MODREF *wm;
+     DWORD exp_size;
+     NTSTATUS ret = STATUS_PROCEDURE_NOT_FOUND;
++
++    if (hide_wine_exports( name )) return STATUS_PROCEDURE_NOT_FOUND;
+ 
+     RtlEnterCriticalSection( &loader_section );
+ 

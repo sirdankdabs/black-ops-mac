@@ -276,6 +276,52 @@ if [ "$t" = t7 ]; then
   log="$home/logs/boiii-play.log"
   # boiii's launcher window: mshtml stays on here
   export WINEDLLOVERRIDES="mscoree="
+  # mods' unsafe Lua functions without boiii's question, only if chosen
+  on BOIII_SAFE_LUA || GAME_ARGS="${GAME_ARGS:+$GAME_ARGS }-unsafe-lua"
+  # Workshop mods: boiii takes Wine for Linux and runs steamcmd/steamcmd.sh
+  # (it would fetch Linux SteamCMD, which can't run on macOS: "Retry Limit
+  # Reached"). Give it Valve's macOS SteamCMD (checked against Valve's
+  # signature) behind a steamcmd.sh of ours: SteamCMD gets its own home in the
+  # game folder (never the Mac Steam app's), and its steamapps is linked
+  # where boiii looks for the downloaded mod.
+  scmd="$dir/steamcmd"
+  if [ ! -x "$scmd/mac/steamcmd" ]; then
+    tmp=$(mktemp -d)
+    if curl -fsSL --retry 2 -o "$tmp/s.tgz" https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz &&
+       mkdir -p "$tmp/x" && tar -xzf "$tmp/s.tgz" -C "$tmp/x" &&
+       codesign -v "$tmp/x/steamcmd" 2>/dev/null &&
+       codesign -dv "$tmp/x/steamcmd" 2>&1 | grep -q 'TeamIdentifier=MXGJJ98X76'; then
+      rm -rf "$scmd/mac"; mkdir -p "$scmd"; mv "$tmp/x" "$scmd/mac"
+    fi
+    rm -rf "$tmp"
+  fi
+  if [ -x "$scmd/mac/steamcmd" ]; then
+    rm -rf "$dir/steamcmd.tar.gz" "$scmd/linux32"
+    # steamcmd.sh is a small Windows program of ours (kit/tools/steamcmd-bridge.c):
+    # boiii can only wait for Windows programs; it runs the Mac script below
+    cp "$kit/payload/bo3w/steamcmd-bridge.exe" "$scmd/steamcmd.sh"
+    cat > "$scmd/bom-steamcmd.sh" <<'SH'
+#!/bin/bash
+# BO-Mac: Valve's macOS SteamCMD for boiii's Workshop downloads, started by
+# steamcmd.sh (our Windows bridge), which waits for done.<token>
+here="$(cd "${0%/*}" && pwd -P)"
+token=$1; shift
+export HOME="$here/home"
+root="$HOME/Library/Application Support/Steam"
+mkdir -p "$root/steamapps"
+[ -L "$here/steamapps" ] || rm -rf "$here/steamapps"
+ln -sfn "$root/steamapps" "$here/steamapps"
+# SteamCMD's log stays out of boiii's sight: when boiii reads "update
+# started" in steamcmd/logs/content_log.txt it empties the download folder
+# (Windows SteamCMD's leftovers), which the macOS one is still writing
+rm -rf "$here/logs"
+"$here/mac/steamcmd.sh" "$@"
+rc=$?
+echo "$rc" > "$here/done.$token.tmp" && mv "$here/done.$token.tmp" "$here/done.$token"
+exit "$rc"
+SH
+    chmod +x "$scmd/bom-steamcmd.sh"
+  fi
   cd "$dir" || exit 1
   # BlackOps3.start stays behind when the game is stopped from the app, and the
   # next start would offer Safe Mode (which lowers the graphics settings).

@@ -61,6 +61,8 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Fullscreen at 1x**: the display switches to a 1x mode of its size while the game runs, so the picture fills the screen on HiDPI displays.
 - **No Safe Mode prompt** after the game is stopped from the app.
 - **Back up your stats**: *Back Up Stats…* saves your stats, loadouts, save games and the identity keys the servers know you by in one zip — keep it, take it to another Mac (*Restore Stats…*) or to Windows.
+- **Workshop mods download**: boiii fetches a server's mod with SteamCMD, but on Wine it picks the Linux one, which can't run on a Mac ("Retry Limit Reached"). BO-Mac gives it Valve's macOS SteamCMD (checked against Valve's signature), with its own folder in the game folder (your Mac Steam app is never touched), behind a small Windows bridge so boiii can follow the download.
+- **Unsafe Lua (optional)**: some mods ask to use "unsafe" Lua functions. boiii asks each time; turning off *Ask before unsafe Lua* in Settings starts boiii with `-unsafe-lua` instead. Only do that if you trust the servers you join: under Wine those functions reach your whole Mac.
 - **Cutscene videos in their real colours**: Wine's video decoder hid the NV12 format on macOS (a CrossOver change); Black Ops III reads its videos as NV12, so they came out purple/green. The engine offers NV12 again.
 
 ### For every game

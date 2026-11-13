@@ -159,6 +159,9 @@ if [ -z "$own" ]; then   # our engine has it built in
   cp "$kit/payload/x86_64-unix/ntdll.so" "$L/x86_64-unix/ntdll.so"
   codesign -fs - "$L/x86_64-unix/ntdll.so" 2>/dev/null
 fi
+# ntdll.dll: WINE_HIDE_WINE_EXPORTS (boiii's Workshop downloads), same build as ntdll.so
+cp "$kit/payload/x86_64-windows/ntdll.dll" "$L/x86_64-windows/ntdll.dll"
+cp "$kit/payload/i386-windows/ntdll.dll" "$L/i386-windows/ntdll.dll"
 cp "$kit/payload/i386-windows/d3d9.dll" "$L/i386-windows/d3d9.dll"
 # xinput: ours and CrossOver's side by side, launch.sh picks one (RUMBLE_FIX)
 cp "$kit/payload/orig/xinput1_3.dll" "$L/i386-windows/xinput1_3.cx.dll"
