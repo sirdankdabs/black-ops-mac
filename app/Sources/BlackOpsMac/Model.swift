@@ -242,6 +242,8 @@ struct Settings {
 
 @MainActor
 final class AppState: ObservableObject {
+    static let shared = AppState()
+
     @Published var settings = Settings.load()
     @Published var log: [String] = []
     @Published var progress: String?          // a running setup step
@@ -433,6 +435,138 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: App updates (GitHub releases of the repository)
+
+    nonisolated static let repository = "sirdankdabs/bo-mac"
+    var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
+    var kitVersion: String? {
+        (try? String(contentsOf: Paths.kit.appendingPathComponent("VERSION"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    struct Release: Sendable { let version: String; let notes: String; let download: URL }
+
+    /// On launch (quietly) or from the menu (says so when up to date): offers
+    /// the newer release, never installs on its own.
+    func checkForAppUpdate(manual: Bool) {
+        let current = appVersion
+        Task.detached {
+            let release = Self.latestRelease()
+            await MainActor.run {
+                guard let release else {
+                    if manual { self.error = "Couldn't check for updates. Check your internet connection and try again." }
+                    return
+                }
+                if Self.isNewer(release.version, than: current) {
+                    self.offerUpdate(release)
+                } else if manual {
+                    let alert = NSAlert()
+                    alert.messageText = "You're up to date"
+                    alert.informativeText = "Black Ops Mac \(current) is the latest version."
+                    alert.runModal()
+                }
+            }
+        }
+    }
+
+    private func offerUpdate(_ release: Release) {
+        let alert = NSAlert()
+        alert.messageText = "Black Ops Mac \(release.version) is available"
+        var notes = release.notes.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "### ", with: "")
+        if notes.count > 900 { notes = String(notes.prefix(900)) + "…" }
+        alert.informativeText = "You have \(appVersion).\n\n\(notes)"
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Later")
+        if alert.runModal() == .alertFirstButtonReturn { installUpdate(release) }
+    }
+
+    nonisolated static func latestRelease() -> Release? {
+        guard let url = URL(string: "https://api.github.com/repos/\(repository)/releases/latest"),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tag = json["tag_name"] as? String,
+              let assets = json["assets"] as? [[String: Any]],
+              let zip = assets.first(where: { ($0["name"] as? String)?.hasSuffix(".zip") == true }),
+              let link = zip["browser_download_url"] as? String, let download = URL(string: link) else { return nil }
+        let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        return Release(version: version, notes: json["body"] as? String ?? "", download: download)
+    }
+
+    nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
+        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+            if p != q { return p > q }
+        }
+        return false
+    }
+
+    /// Downloads the release, puts it in place of this app (the old one goes
+    /// to the Trash) and opens it.
+    private func installUpdate(_ release: Release) {
+        guard running == nil else { error = "Quit the game first, then update."; return }
+        progress = "Downloading Black Ops Mac \(release.version)"
+        let current = Bundle.main.bundleURL
+        Task.detached {
+            do {
+                let (file, _) = try await URLSession.shared.download(from: release.download)
+                let fm = FileManager.default
+                let dir = fm.temporaryDirectory.appendingPathComponent("bom-update-\(UUID().uuidString)")
+                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                let unzip = Process()
+                unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                unzip.arguments = ["-x", "-k", file.path, dir.path]
+                try unzip.run(); unzip.waitUntilExit()
+                guard let app = try fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+                        .first(where: { $0.pathExtension == "app" }) else { throw CocoaError(.fileReadCorruptFile) }
+                try fm.trashItem(at: current, resultingItemURL: nil)
+                try fm.moveItem(at: app, to: current)
+                let relaunch = Process()
+                relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+                relaunch.arguments = ["-c", "sleep 1; xattr -dr com.apple.quarantine \"$0\" 2>/dev/null; open \"$0\"", current.path]
+                try relaunch.run()
+                await MainActor.run { NSApp.terminate(nil) }
+            } catch {
+                await MainActor.run {
+                    self.progress = nil
+                    self.error = "The update could not be installed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// After an update: the files this app installs (engine modules, BO3 Mac
+    /// Client) are replaced with the ones it now carries. Settings, Plutonium
+    /// and shader caches are kept.
+    func refreshInstalledFiles() {
+        guard running == nil, progress == nil else { return }
+        if engineInstalled, let kit = kitVersion, engineInfo["kit"] != kit {
+            runScript("install-engine.sh", [], title: "Updating the game files") { [weak self] in self?.refreshBO3Files() }
+        } else {
+            refreshBO3Files()
+        }
+    }
+
+    private func refreshBO3Files() {
+        Task.detached {
+            var status: [String: String] = [:]
+            for line in Self.capture("bo3.sh", ["status"]).split(separator: "\n") {
+                let p = line.split(separator: "=", maxSplits: 1)
+                status[String(p[0])] = p.count == 2 ? String(p[1]) : ""
+            }
+            let installed = status["installed"] ?? "", bundled = status["latest"] ?? ""
+            let current = status, ready = status["state"] == "ready"
+            await MainActor.run {
+                self.bo3 = current
+                if !installed.isEmpty, !bundled.isEmpty, installed != bundled, ready {
+                    self.runScript("bo3.sh", ["install"], title: "Updating BO3 Mac Client", env: ["NO_OPEN": "1"]) {
+                        self.refreshBO3()
+                    }
+                }
+            }
+        }
+    }
+
     func checkUpdates() {
         refreshBO3()
         refreshZD()
@@ -463,10 +597,12 @@ final class AppState: ObservableObject {
 
     /// Run a kit script, streaming its output to the log; "==> " lines show
     /// as the current step, "ERROR: " lines as an alert.
-    func runScript(_ script: String, _ args: [String], title: String?, done: (() -> Void)? = nil) {
+    func runScript(_ script: String, _ args: [String], title: String?, env: [String: String] = [:],
+                   done: (() -> Void)? = nil) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/bash")
         p.arguments = [Paths.kit.appendingPathComponent(script).path] + args
+        if !env.isEmpty { p.environment = ProcessInfo.processInfo.environment.merging(env) { $1 } }
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe

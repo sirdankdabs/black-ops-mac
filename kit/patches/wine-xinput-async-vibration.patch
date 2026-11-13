@@ -54,10 +54,12 @@
      return ERROR_SUCCESS;
  }
  
-@@ -823,9 +831,99 @@
+@@ -821,11 +829,106 @@
+         if (enable) controller_enable(&controllers[index]);
+         else controller_disable(&controllers[index]);
          controller_unlock(&controllers[index]);
-     }
- }
++    }
++}
 +
 +/* Vibration is sent by its own thread. HidD_SetOutputReport is a synchronous
 + * write to the device (a USB or wireless round trip, often several ms), and
@@ -81,7 +83,7 @@
 +    BOOL pending;
 +    XINPUT_VIBRATION vibration;
 +} rumble[XUSER_MAX_COUNT];
- 
++
 +static void rumble_send(DWORD index, XINPUT_VIBRATION *vibration)
 +{
 +    struct xinput_controller *controller = &controllers[index];
@@ -109,7 +111,7 @@
 +static DWORD WINAPI rumble_thread_proc(void *param)
 +{
 +    XINPUT_VIBRATION vibration;
-+    BOOL pending;
++    BOOL pending, sent = FALSE;
 +    DWORD i;
 +
 +    SetThreadDescription(GetCurrentThread(), L"wine_xinput_rumble");
@@ -124,8 +126,13 @@
 +            vibration = rumble[i].vibration;
 +            rumble[i].pending = FALSE;
 +            LeaveCriticalSection(&rumble_crit);
-+            if (pending) rumble_send(i, &vibration);
++            if (pending) { rumble_send(i, &vibration); sent = TRUE; }
 +        }
++        /* At most 25 vibration updates a second (the newest value wins):
++         * games change it nearly every frame while firing, and over
++         * Bluetooth each update is a report that delays the controller's
++         * input reports. Motors can't follow faster changes anyway. */
++        if (sent) { Sleep(40); sent = FALSE; }
 +    }
 +    return 0;
 +}
@@ -143,18 +150,18 @@
 +    {
 +        FreeLibrary(module);
 +        return FALSE;
-+    }
+     }
 +    CloseHandle(thread);
 +    return TRUE;
-+}
-+
+ }
+ 
  DWORD WINAPI DECLSPEC_HOTPATCH XInputSetState(DWORD index, XINPUT_VIBRATION *vibration)
  {
 +    static INIT_ONCE rumble_once = INIT_ONCE_STATIC_INIT;
      DWORD ret;
  
      TRACE("index %lu, vibration %p.\n", index, vibration);
-@@ -834,12 +932,23 @@
+@@ -834,12 +937,23 @@
  
      if (index >= XUSER_MAX_COUNT) return ERROR_BAD_ARGUMENTS;
      if (!controller_lock(&controllers[index])) return ERROR_DEVICE_NOT_CONNECTED;

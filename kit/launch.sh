@@ -134,6 +134,11 @@ else reg add "$bootstrapper\\Mac Driver" /v CaptureDisplaysForFullscreen /d n /f
 reg add 'HKCU\Software\Wine\AppDefaults\plutonium-launcher-win32.exe\Direct3D' /v renderer /d gl /f
 "$WINESERVER" -w 2>/dev/null
 
+# --- macOS input ----------------------------------------------------------------
+# Holding a key (W, A, S, D…) would open macOS's accent menu in the game's window:
+# turn press-and-hold off for Wine's process only.
+defaults write com.codeweavers.CrossOver.wineloader ApplePressAndHoldEnabled -bool false 2>/dev/null
+
 # --- File pickers ---------------------------------------------------------------
 # Wine's file dialogs (Plutonium's "Browse" for the game folder) open on the
 # Windows desktop: give it shortcuts to the Mac's folders and the game folders,

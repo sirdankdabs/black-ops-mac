@@ -37,7 +37,7 @@
 #ifdef MACFIX_DEBUG
 #define Version_Prefix "[BO3MacFix DEBUG]"
 #else
-#define Version_Prefix "[BO3MacFix " MACFIX_VERSION "]"
+#define Version_Prefix "[BO3MacFix+T7Patch]"
 #endif
 #define Error_Prefix "^7[^6BO3MacFix^7] "
 
@@ -686,6 +686,35 @@ static void load_config_file(void) {
 }
 
 // Entrypoint for the dylib
+// The game's SDL 2.0.7 only treats controllers in its built-in list as
+// gamepads, and Nintendo Switch Pro controllers (and pads in Switch mode, like
+// GameSir's) aren't in it: the game greyed out gamepad support. Add a mapping
+// (standard HID layout, face buttons in Xbox positions) before SDL starts.
+// Mappings already in SDL_GAMECONTROLLERCONFIG (Steam Input, the player's)
+// come after ours, so they win.
+static void add_controller_mappings(void) {
+    static const char *mappings =
+        "030000007e0500000920000020010000,Nintendo Switch Pro Controller,a:b0,b:b1,x:b2,y:b3,"
+        "leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
+        "leftstick:b10,rightstick:b11,guide:b12,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
+        "leftx:a0,lefty:a1,rightx:a2,righty:a3,\n"
+        "030000007e0500000920000010020000,Nintendo Switch Pro Controller,a:b0,b:b1,x:b2,y:b3,"
+        "leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
+        "leftstick:b10,rightstick:b11,guide:b12,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
+        "leftx:a0,lefty:a1,rightx:a2,righty:a3,\n"
+        "030000007e0500000920000000000000,Nintendo Switch Pro Controller,a:b0,b:b1,x:b2,y:b3,"
+        "leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
+        "leftstick:b10,rightstick:b11,guide:b12,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
+        "leftx:a0,lefty:a1,rightx:a2,righty:a3,\n";
+    const char *existing = getenv("SDL_GAMECONTROLLERCONFIG");
+    size_t length = strlen(mappings) + (existing ? strlen(existing) : 0) + 1;
+    char *combined = malloc(length);
+    if (!combined) return;
+    snprintf(combined, length, "%s%s", mappings, existing ? existing : "");
+    setenv("SDL_GAMECONTROLLERCONFIG", combined, 1);
+    free(combined);
+}
+
 __attribute__((constructor)) static void dylib_main() {
     // make sure we're loading into the game process and nothing else
     // don't want to inject into defaults, Aspyr launcher or Steamwebhelper
@@ -693,6 +722,8 @@ __attribute__((constructor)) static void dylib_main() {
     const char *image_name = filename_from_path(image_path);
     if (strcmp(image_name, "CoDBlkOps3_Exe") != 0)
         return;
+
+    add_controller_mappings();
 
     load_config_file();
 
