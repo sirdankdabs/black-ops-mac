@@ -61,7 +61,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Fullscreen at 1x**: the display switches to a 1x mode of its size while the game runs, so the picture fills the screen on HiDPI displays.
 - **No Safe Mode prompt** after the game is stopped from the app.
 - **Back up your stats**: *Back Up Stats…* saves your stats, loadouts, save games and the identity keys the servers know you by in one zip — keep it, take it to another Mac (*Restore Stats…*) or to Windows.
-- Known issue: pre-rendered cutscene videos show wrong colours (purple/green); the game itself is unaffected.
+- **Cutscene videos in their real colours**: Wine's video decoder hid the NV12 format on macOS (a CrossOver change); Black Ops III reads its videos as NV12, so they came out purple/green. The engine offers NV12 again.
 
 ### For every game
 

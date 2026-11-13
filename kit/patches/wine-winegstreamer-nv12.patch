@@ -1,0 +1,33 @@
+winegstreamer: offer NV12 first on macOS again (CrossOver's hack 26265 skipped it).
+Black Ops III takes the first output format the H.264 decoder offers and reads
+its frames as NV12; with YV12 offered first its videos came out purple/green.
+WINE_MF_SKIP_NV12=1 brings the old behaviour back.
+
+--- a/dlls/winegstreamer/video_decoder.c	2026-11-13 09:43:55
++++ b/dlls/winegstreamer/video_decoder.c	2026-11-13 09:43:55
+@@ -590,6 +590,12 @@
+ 
+     wine_get_host_version( &sysname, NULL );
+     return !strcmp( sysname, "Darwin" );
++}
++
++static BOOL skip_nv12(void)
++{
++    const char *v = getenv("WINE_MF_SKIP_NV12");
++    return v && v[0] == '1';
+ }
+ 
+ static HRESULT WINAPI transform_GetOutputAvailableType(IMFTransform *iface, DWORD id,
+@@ -605,8 +611,10 @@
+     if (index >= decoder->output_type_count)
+         return MF_E_NO_MORE_TYPES;
+ 
+-    /* CW HACK 26265 */
+-    if (is_macos() && IsEqualGUID(decoder->output_types[index], &MFVideoFormat_NV12))
++    /* CW HACK 26265, off in BO-Mac unless WINE_MF_SKIP_NV12=1: games such as
++     * Black Ops III take the first format offered (NV12 on Windows) and read
++     * frames as NV12 whatever it is, so offering YV12 first tints videos */
++    if (is_macos() && skip_nv12() && IsEqualGUID(decoder->output_types[index], &MFVideoFormat_NV12))
+     {
+         WARN("Skipping NV12 output format\n");
+         index++;
