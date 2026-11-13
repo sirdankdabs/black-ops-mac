@@ -2,7 +2,7 @@
 
 **Call of Duty: World at War, Black Ops, Black Ops II and Black Ops III (Mac and Windows versions) on Apple silicon Macs — in one app.**
 
-Choose your game folder, press Install, press Play. No CrossOver, no Wine to install, no `.command` files, no Terminal.
+Choose your game folder, press Install, press Play. Best on macOS 15 Sequoia or later (see [Requirements](#requirements)). No CrossOver, no Wine to install, no `.command` files, no Terminal.
 
 [**Download the app**](https://github.com/sirdankdabs/bo-mac/releases/latest) · [What it does](#what-it-does) · [Requirements](#requirements) · [Credits](#credits)
 
@@ -83,7 +83,10 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 
 ## Requirements
 
-- A Mac with Apple silicon, macOS 14 or later, and Rosetta 2.
+- A Mac with Apple silicon and Rosetta 2.
+- **macOS 15 Sequoia or later** for every game.
+  - On **macOS 14 Sonoma**, only T4 - WaW, T5 - BOI and T7 - BOIII (Mac Version) work. T6 - BOII, its offline campaign and T7 - BOIII (Windows Version) use DXMT (Direct3D 11), which needs macOS 15. The app tells you this when it opens. Update in System Settings → General → Software Update.
+  - macOS 13 and earlier are not supported.
 - Nothing else: no CrossOver, no Wine to install. The app downloads our engine, built entirely from open source (see *The engine* below).
 - Your own copies of the games:
   - World at War / Black Ops / Black Ops II folders with `plutonium.exe` inside (from [plutonium.pw](https://plutonium.pw)), and a Plutonium account to play online.

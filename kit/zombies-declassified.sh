@@ -25,6 +25,14 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 bo2=${BO2_DIR:-}
 if [ -z "$bo2" ] && [ -f "$home/settings.conf" ]; then bo2=$(sed -n 's/^BO2_DIR=//p' "$home/settings.conf" | tail -1); fi
 
+# the Black Ops II folder, with the reason when it cannot be used
+need_bo2() {
+  [ -n "$bo2" ] || die "set the Black Ops II folder first (T6 - BOII → game folder → Choose…)"
+  [ -d "$bo2" ] || die "BO-Mac cannot open the Black Ops II folder ($bo2): connect the drive it is on, or allow BO-Mac in System Settings → Privacy & Security → Files and Folders (or Full Disk Access)"
+  [ -d "$bo2/zone" ] || die "the Black Ops II folder ($bo2) has no zone folder: choose the game folder again"
+  [ -d "$bo2/sound" ] || die "the Black Ops II folder ($bo2) has no sound folder: Zombies Declassified needs the complete game"
+}
+
 installed() { [ -f "$state" ] && /usr/bin/python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); print(s.get("releaseTag") or "") if s.get("files") else None' "$state" 2>/dev/null; }
 latest_json() { curl -fsSL "https://api.github.com/repos/$repo/releases/latest"; }
 
@@ -36,7 +44,7 @@ try: print(json.load(sys.stdin)["tag_name"])
 except Exception: pass')"
   ;;
 install|verify)
-  [ -d "$bo2/zone" ] && [ -d "$bo2/sound" ] || die "set the Black Ops II folder first"
+  need_bo2
   [ -d "$home/prefix/drive_c" ] || die "set up Plutonium first"
   mkdir -p "$t6" "$ZDINSTALL_HOME"
   work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
@@ -64,7 +72,7 @@ print(next(a["browser_download_url"] for a in r["assets"] if a["name"]==sys.argv
   ;;
 remove)
   [ -f "$state" ] || die "Zombies Declassified is not installed"
-  [ -d "$bo2/sound" ] || die "set the Black Ops II folder first"
+  need_bo2
   step "Moving Zombies Declassified's files to the Trash"
   dest="$HOME/.Trash/Zombies Declassified (BO-Mac $(date '+%Y-%m-%d %H.%M.%S'))"
   /usr/bin/python3 -I - "$state" "$t6" "$bo2" "$dest" <<'PY'

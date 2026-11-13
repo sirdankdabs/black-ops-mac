@@ -639,6 +639,15 @@ final class AppState: ObservableObject {
                 try unzip.run(); unzip.waitUntilExit()
                 guard let app = try fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
                         .first(where: { $0.pathExtension == "app" }) else { throw CocoaError(.fileReadCorruptFile) }
+                // an update that needs a newer macOS would not open: keep this app
+                let v = ProcessInfo.processInfo.operatingSystemVersion
+                if let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")),
+                   let min = info["LSMinimumSystemVersion"] as? String,
+                   Self.isNewer(min, than: "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)") {
+                    try? fm.removeItem(at: dir)
+                    throw NSError(domain: "BO-Mac", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                        "BO-Mac \(release.version) needs macOS \(min) or later. Update macOS in System Settings → General → Software Update."])
+                }
                 try fm.trashItem(at: current, resultingItemURL: nil)
                 try fm.moveItem(at: app, to: current)
                 let relaunch = Process()
@@ -683,6 +692,38 @@ final class AppState: ObservableObject {
                         self.refreshBO3()
                     }
                 }
+            }
+        }
+    }
+
+    /// macOS 14: DXMT (Direct3D 11: Black Ops II and the Windows Black Ops III)
+    /// needs macOS 15, so those games cannot run. Said once per launch until
+    /// the user ticks "Don't show this again".
+    func warnOldMacOS() {
+        guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 15,
+              !UserDefaults.standard.bool(forKey: "hideMacOS14Warning") else { return }
+        DispatchQueue.main.async {
+            let os = ProcessInfo.processInfo.operatingSystemVersion
+            let v = "\(os.majorVersion).\(os.minorVersion)"
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "macOS 15 or later is recommended"
+            alert.informativeText = """
+                This Mac runs macOS \(v). Games that need DXMT (Direct3D 11) cannot run on macOS 14:
+                •  T6 - BOII
+                •  T6 - BOII (Campaign, Offline)
+                •  T7 - BOIII (Windows Version)
+
+                T4 - WaW, T5 - BOI and T7 - BOIII (Mac Version) can still be used.
+
+                To play every game, update to macOS 15 Sequoia or later in System Settings → General → Software Update.
+                """
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "Don't show this again"
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            if alert.suppressionButton?.state == .on {
+                UserDefaults.standard.set(true, forKey: "hideMacOS14Warning")
             }
         }
     }

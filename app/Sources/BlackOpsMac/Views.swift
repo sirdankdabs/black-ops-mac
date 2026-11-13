@@ -27,6 +27,7 @@ struct RootView: View {
         ContentView()
             .environmentObject(state)
             .onAppear {
+                state.warnOldMacOS()
                 state.checkUpdates()
                 state.refreshInstalledFiles()
                 state.checkForAppUpdate(manual: false)
