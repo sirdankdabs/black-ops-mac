@@ -37,6 +37,10 @@ engine_url="https://github.com/sirdankdabs/bo-mac/releases/download/engine-$engi
 engine_sha=728b20a8d3c3e753eb82d3379800d53de31fe393696146de41062650aff2d311
 moltenvk_url=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
 moltenvk_sha=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
+# Wine Gecko (WineHQ): draws Windows' HTML control (boiii's launcher)
+gecko_version=2.47.4
+gecko_sha_x86_64=fd88fc7e537d058d7a8abf0c1ebc90c574892a466de86706a26d254710a82814
+gecko_sha_x86=2cfc8d5c948602e21eff8a78613e1826f2d033df9672cace87fed56e8310afb6
 x87_fallback_tag=v1.9.1
 x87_fallback_sha=e18d1c2443f1440ae5a8e137dd0c85ec33e53506b67604675826094122106615
 
@@ -198,6 +202,15 @@ cp "$kit/payload/lib64/libMoltenVK.dylib" "$new/lib64/libMoltenVK.dylib"
 codesign -fs - "$new/lib64/libMoltenVK.dylib" 2>/dev/null
 # our engine's Vulkan (winevulkan) is MoltenVK, through the shader cache
 [ -n "$own" ] && ln -sf libMoltenVK.dylib "$new/lib64/libvulkan.1.dylib"
+
+step "Installing Wine Gecko $gecko_version (HTML for boiii's launcher)"
+mkdir -p "$new/share/wine/gecko"
+for a in x86_64 x86; do
+  sha_var="gecko_sha_$a"
+  f="wine-gecko-$gecko_version-$a.tar.xz"
+  fetch "https://dl.winehq.org/wine/wine-gecko/$gecko_version/$f" "$downloads/$f" "${!sha_var}"
+  tar -xJf "$downloads/$f" -C "$new/share/wine/gecko"
+done
 
 step "Installing the x87 accelerator"
 x87_install "$new"

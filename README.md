@@ -108,7 +108,7 @@ Built entirely from open source by `engine/build-engine.sh`, and published in th
 
 - **Wine** — CodeWeavers' published CrossOver 26.3 source code (LGPL), with our patches (`kit/patches`), compiled for Apple silicon (x86_64 under Rosetta 2, 32- and 64-bit Windows programs).
 - **macOS libraries** Wine loads (FreeType, GnuTLS and its dependencies, SDL2, libinotify) — x86_64 builds from [Sikarugir](https://github.com/Sikarugir-App)'s wrapper template.
-- **Wine Mono** from WineHQ, for Plutonium's installer.
+- **Wine Mono** from WineHQ, for Plutonium's installer, and **Wine Gecko** from WineHQ, which draws boiii's launcher.
 - **winegstreamer** with **GStreamer 1.24** (LGPL, CrossOver 26's x86_64 build) and its plugins, for Media Foundation video decoding.
 - Completed at install time with our DXVK, DXMT, MoltenVK (Khronos) and athei's x87sidecar.
 
