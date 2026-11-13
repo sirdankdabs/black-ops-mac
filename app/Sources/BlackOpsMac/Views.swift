@@ -169,6 +169,13 @@ struct PlutoniumGameView: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .disabled(state.progress != nil)
             }
+            if game == .bo2c {
+                Label("Only works with the Steam version of Black Ops II and an additional required file that cannot be shared here. Contact the developer to obtain it.",
+                      systemImage: "info.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(maxWidth: 620, alignment: .leading)
+            }
         }
         .confirmationDialog("Remove the \(game.title) setup?", isPresented: $confirmRemove) {
             Button("Remove the \(game.title) setup", role: .destructive) { state.removeSetup(game.rawValue) }
