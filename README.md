@@ -31,7 +31,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Starts fullscreen at 1920×1080** with anti-aliasing Apple GPUs support (it otherwise opened in a small 800×600 window).
 - **Zombies Declassified** built in — Black Ops II's unreleased "DLC 5" (Nacht der Untoten, Verrückt, Shi No Numa, Der Riese, Kino der Toten, "Five", Ascension, Shangri-La, Moon): one-click install with the mod's own verified installer, a **Declassified** play button, file check and remove.
 
-### T6 – BOII (Campaign, Experimental) · Black Ops II's campaign, no Steam
+### T6 – BOII (Campaign, Offline) · Black Ops II's campaign, no Steam
 
 - **The campaign of your own copy** (`t6sp.exe`; Plutonium has no campaign), with the same Direct3D 11 → Metal setup as Black Ops II: DXMT, background pipelines, frame pacing, controller fixes.
 - **No Steam and no sign-in**: *Prepare* removes Steam's wrapper from `t6sp.exe` (the original stays beside it as `t6sp.exe.steam`) and uses the offline `steam_api.dll` that you provide in the game folder. Nothing is downloaded and Windows Steam is not installed.

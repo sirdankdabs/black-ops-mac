@@ -14,7 +14,7 @@ enum Game: String, CaseIterable, Identifiable {
         switch self {
         case .bo1: "T5 - BOI"
         case .bo2: "T6 - BOII"
-        case .bo2c: "T6 - BOII (Campaign, Experimental)"
+        case .bo2c: "T6 - BOII (Campaign, Offline)"
         case .bo3: "T7 - BOIII (Mac Version)"
         case .boiii: "T7 - BOIII (Windows Version)"
         case .waw: "T4 - WaW"
