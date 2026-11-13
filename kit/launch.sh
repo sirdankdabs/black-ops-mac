@@ -245,11 +245,13 @@ if [ "$t" = t7 ]; then
   reg add 'HKLM\Software\Wow6432Node\Valve\Steam' /v InstallPath /d 'C:\Program Files (x86)\Steam' /f
   # boiii's launcher is Internet Explorer's browser control (Wine's mshtml,
   # drawn by Wine Gecko). The prefix is made with mshtml off (Plutonium's
-  # installer), so its HTML document class is not registered and the
-  # launcher stays white: register it once.
-  if ! grep -q '25336920-03F9-11CF-8FD0-00AA00686F13' "$WINEPREFIX/system.reg" 2>/dev/null; then
-    WINEDLLOVERRIDES="mscoree=" "$wine" regsvr32 /s mshtml.dll > /dev/null 2>&1
-    WINEDLLOVERRIDES="mscoree=" "$wine" 'C:\windows\syswow64\regsvr32.exe' /s mshtml.dll > /dev/null 2>&1
+  # installer), which leaves its registration incomplete (the HTML document
+  # class may be there, its content types are not) and the launcher white:
+  # run mshtml's own registration once per prefix.
+  if [ ! -f "$WINEPREFIX/.bom-mshtml" ]; then
+    WINEDLLOVERRIDES="mscoree=" "$wine" regsvr32 /s mshtml.dll > /dev/null 2>&1 &&
+    WINEDLLOVERRIDES="mscoree=" "$wine" 'C:\windows\syswow64\regsvr32.exe' /s mshtml.dll > /dev/null 2>&1 &&
+      : > "$WINEPREFIX/.bom-mshtml"
   fi
   # Prefixes made before the engine had winegstreamer: register it once.
   sys="$WINEPREFIX/drive_c/windows"
@@ -278,18 +280,20 @@ if [ "$t" = t7 ]; then
   # BlackOps3.start stays behind when the game is stopped from the app, and the
   # next start would offer Safe Mode (which lowers the graphics settings).
   rm -f BlackOps3.start
-  # The player name from the app's settings, in boiii's own profile.
+  # The player name from the app's settings, in boiii's own profile, only
+  # while boiii has none of its own: the name typed in boiii's launcher is kept
   if [ -n "${3:-}" ] || [ -n "${PLAYER_NAME:-}" ]; then
     /usr/bin/python3 -I - "$dir/boiii_players/properties.json" "${3:-$PLAYER_NAME}" <<'PY' 2>/dev/null || true
 import json, os, sys
 p, name = sys.argv[1], sys.argv[2]
 d = {}
 if os.path.exists(p):
-    try: d = json.load(open(p))
-    except Exception: d = {}
-d["playerName"] = name
-os.makedirs(os.path.dirname(p), exist_ok=True)
-json.dump(d, open(p, "w"))
+    try: d = json.load(open(p, encoding="utf-8-sig"))   # boiii writes a BOM
+    except Exception: sys.exit(0)                        # unreadable: leave it alone
+if d.get("playerName", "") in ("", "crossover", "Unknown Soldier"):
+    d["playerName"] = name
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    json.dump(d, open(p, "w", encoding="utf-8-sig"), separators=(",", ":"))
 PY
   fi
   # First start: the game's auto-detect picks for an unknown GPU (half
