@@ -1,12 +1,18 @@
 # BO-Mac
 
-**Call of Duty: Black Ops, Black Ops II and Black Ops III (Mac and Windows versions) on Apple silicon Macs — in one app.**
+**Call of Duty: World at War, Black Ops, Black Ops II and Black Ops III (Mac and Windows versions) on Apple silicon Macs — in one app.**
 
 Choose your game folder, press Install, press Play. No CrossOver, no Wine to install, no `.command` files, no Terminal.
 
 [**Download the app**](https://github.com/sirdankdabs/bo-mac/releases/latest) · [What it does](#what-it-does) · [Requirements](#requirements) · [Credits](#credits)
 
 ## What it does
+
+### T4 – WaW · World at War (Plutonium)
+
+- **Online through Plutonium and offline** — Zombies (Nacht der Untoten, Verrückt, Shi No Numa, Der Riese), Campaign and Multiplayer.
+- **Same setup as Black Ops**: Direct3D 9 on our DXVK with background pipeline compilation and persistent shader caches, the x87 accelerator, controller and mouse fixes.
+- **Starts fullscreen at your display's resolution** with sync, 16x anisotropic filtering and 4x anti-aliasing (WaW otherwise opens in a 1024×768 window).
 
 ### T5 – BOI · Black Ops (Plutonium)
 
@@ -25,12 +31,13 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Starts fullscreen at 1920×1080** with anti-aliasing Apple GPUs support (it otherwise opened in a small 800×600 window).
 - **Zombies Declassified** built in — Black Ops II's unreleased "DLC 5" (Nacht der Untoten, Verrückt, Shi No Numa, Der Riese, Kino der Toten, "Five", Ascension, Shangri-La, Moon): one-click install with the mod's own verified installer, a **Declassified** play button, file check and remove.
 
-### T6 – BOII (Campaign) · Black Ops II's campaign from Steam
+### T6 – BOII (Campaign, Experimental) · Black Ops II's campaign from Steam
 
 - **The campaign of your Steam copy** (`t6sp.exe`; Plutonium has no campaign), with the same Direct3D 11 → Metal setup as Black Ops II: DXMT, background pipelines, frame pacing, x87 acceleration, controller fixes.
 - **Your game folder can be anywhere**: choose it (downloaded with the Mac Steam app, copied from a PC, on an external drive…). BO-Mac shows it to Steam through a library of its own.
 - **Windows Steam in its own Wine prefix** (the game's Steam DRM needs it), separate from every other game; its in-game overlay is off. The first time you press **Play Campaign**, Steam opens to sign in and the game starts once you have; after that, Steam starts in the background and signs in by itself.
 - **Starts fullscreen at 1920×1080** (an Apple-GPU hardware profile, once), with a 1x display mode while the game runs.
+- **Known issue — Steam's window is black.** Steam for Windows doesn't draw its windows under Wine on macOS: the sign-in window shows up as an empty black box. Signing in still works if you type blind: click inside the black window (the user name field has the focus), type your user name, press **Tab**, type your password, press **Enter**, and approve Steam Guard on your phone if asked. You only do this once.
 
 ### T7 – BOIII (Mac Version) · Black Ops III from Steam
 
@@ -76,7 +83,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - A Mac with Apple silicon, macOS 14 or later, and Rosetta 2.
 - Nothing else: no CrossOver, no Wine to install. The app downloads our engine, built entirely from open source (see *The engine* below).
 - Your own copies of the games:
-  - Black Ops / Black Ops II folders with `plutonium.exe` inside (from [plutonium.pw](https://plutonium.pw)), and a Plutonium account to play online.
+  - World at War / Black Ops / Black Ops II folders with `plutonium.exe` inside (from [plutonium.pw](https://plutonium.pw)), and a Plutonium account to play online.
   - Black Ops III from Steam (the Mac version), and/or the Windows version of Black Ops III (the game folder with `BlackOps3.exe`).
 
 ## Use it
@@ -86,7 +93,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 2. **Prepare your game folder:** Make sure your game files are in a single folder containing `plutonium.exe`. This is the folder you must select during installation when prompted to choose the game directory.
 
 3. Open the app and pick a game:
-   - **Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
+   - **World at War / Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
    - **Black Ops III**: Once the game is installed through Steam, click *Install* → the server browser will open. From there, select any server you want to join, and the game will launch automatically. Once the game opens, navigate to the corresponding game mode (e.g., Zombies), and you'll automatically join the selected server. Alternatively, you can launch the game directly through Steam to join Steam servers or open the server browser separately to connect to community servers.
 
    - **T6 – BOII (Campaign)**: *Install* Steam for Windows → *Choose…* your game folder (wherever it is) → **Play Campaign**. The first time, Steam opens to sign in (the window may stay black: click it, type your user name, Tab, password, Enter; approve Steam Guard on your phone).

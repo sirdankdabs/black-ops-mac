@@ -3,6 +3,7 @@
 # Everything removed goes to the Trash (nothing is deleted for good), and the
 # games themselves are never touched.
 #
+#   uninstall.sh waw    forget the World at War folder
 #   uninstall.sh bo1    forget the Black Ops folder; its shader caches go
 #   uninstall.sh bo2    forget the Black Ops II folder
 #   uninstall.sh boiii  forget the Black Ops III (Windows) folder
@@ -39,6 +40,12 @@ forget() {  # remove settings.conf lines
 stop_games() { [ -x "$kit/launch.sh" ] && bash "$kit/launch.sh" stop >/dev/null 2>&1; true; }
 
 case "${1:-}" in
+waw)
+  stop_games
+  step "Removing the World at War setup"
+  forget WAW_DIR
+  step "World at War can be set up again"
+  ;;
 bo1)
   stop_games
   step "Removing the Black Ops setup"
@@ -111,6 +118,6 @@ bo3)
   step "BO3 Mac Client removed"
   ;;
 *)
-  die "usage: uninstall.sh bo1 | bo2 | bo2c | boiii | all | bo3"
+  die "usage: uninstall.sh waw | bo1 | bo2 | bo2c | boiii | all | bo3"
   ;;
 esac

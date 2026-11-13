@@ -99,11 +99,9 @@ struct GameRow: View {
             }
         }
         .padding(.vertical, 4)
-        .opacity(game == .waw ? 0.55 : 1)
     }
 
     private var statusText: String {
-        if game == .waw { return "Coming soon" }
         if state.running == game { return "Running" }
         return state.isReady(game) ? "Ready" : "Set up"
     }
@@ -131,9 +129,8 @@ struct GameDetail: View {
                 .foregroundStyle(.white)
 
                 switch game {
-                case .bo1, .bo2, .bo2c, .boiii: PlutoniumGameView(game: game)
+                case .waw, .bo1, .bo2, .bo2c, .boiii: PlutoniumGameView(game: game)
                 case .bo3: BO3View()
-                case .waw: ComingSoonView()
                 }
                 Spacer()
                 if let p = state.progress {
@@ -183,6 +180,8 @@ struct PlutoniumGameView: View {
                  ? "Campaign setup: moves its own Wine prefix with Steam for Windows (and your sign-in there) to the Trash and forgets the game folder. The game files stay.\n\nEverything: also moves the engine and the Plutonium prefix to the Trash."
                  : game == .boiii
                  ? "Black Ops III (Windows) setup: forgets the game folder. The game, boiii.exe and your stats in it are not touched.\n\nEverything: also moves the engine and the Wine prefix (Plutonium, its login and BOIII's identity keys: back up your stats first) to the Trash."
+                 : game == .waw
+                 ? "World at War setup: forgets the game folder.\n\nEverything: also moves the engine and the Wine prefix with Plutonium (and its login) to the Trash, so every Plutonium game is set up again from the start.\n\nYour game folders are not touched."
                  : game == .bo1
                  ? "Black Ops setup: forgets the game folder and moves its shader caches to the Trash (the next visit to each map compiles again).\n\nEverything: also moves the engine and the Wine prefix with Plutonium (and its login) to the Trash, so Black Ops and Black Ops II are both set up again from the start.\n\nYour game folders are not touched."
                  : "Black Ops II setup: forgets the game folder and its mod arguments.\n\nEverything: also moves the engine and the Wine prefix with Plutonium (and its login) to the Trash, so Black Ops and Black Ops II are both set up again from the start.\n\nYour game folders are not touched.")
@@ -213,6 +212,11 @@ struct PlutoniumGameView: View {
                 if state.running == game {
                     Button { state.stop() } label: { Label("Stop the game", systemImage: "stop.fill") }
                         .buttonStyle(.bordered).tint(.white)
+                }
+                if game == .bo2c {
+                    Label("Experimental. Steam for Windows doesn't draw its windows under Wine on macOS: the first time, its sign-in window is an empty black box. Click inside it (the user name field has the focus), type your user name, press Tab, your password, Enter, and approve Steam Guard on your phone if asked. You only do this once.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.85))
+                        .frame(maxWidth: 560, alignment: .leading)
                 }
                 if game == .boiii {
                     HStack(spacing: 10) {
@@ -495,12 +499,6 @@ struct BO3View: View {
     }
 }
 
-struct ComingSoonView: View {
-    var body: some View {
-        Text("World at War support is on its way.")
-            .font(.system(size: 14)).foregroundStyle(.white.opacity(0.8))
-    }
-}
 
 struct BigButton: View {
     let title: String

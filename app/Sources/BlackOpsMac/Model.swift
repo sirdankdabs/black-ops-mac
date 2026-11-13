@@ -7,14 +7,14 @@ import UniformTypeIdentifiers
 // MARK: - Games
 
 enum Game: String, CaseIterable, Identifiable {
-    case bo1, bo2, bo2c, bo3, boiii, waw
+    case waw, bo1, bo2, bo2c, bo3, boiii
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .bo1: "T5 - BOI"
         case .bo2: "T6 - BOII"
-        case .bo2c: "T6 - BOII (Campaign)"
+        case .bo2c: "T6 - BOII (Campaign, Experimental)"
         case .bo3: "T7 - BOIII (Mac Version)"
         case .boiii: "T7 - BOIII (Windows Version)"
         case .waw: "T4 - WaW"
@@ -27,7 +27,7 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo2c: "Steam · Campaign"
         case .bo3: "Native Mac game · community servers"
         case .boiii: "BOIII · Ezz community servers"
-        case .waw: "Coming soon"
+        case .waw: "Plutonium · Zombies, Campaign, Multiplayer"
         }
     }
     var symbol: String {
@@ -37,7 +37,7 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo2c: "2.square.fill"
         case .bo3: "3.circle.fill"
         case .boiii: "3.square.fill"
-        case .waw: "clock.fill"
+        case .waw: "4.circle.fill"
         }
     }
     var colors: [Color] {
@@ -47,12 +47,13 @@ enum Game: String, CaseIterable, Identifiable {
         case .bo2c: [Color(red: 0.92, green: 0.18, blue: 0.20), Color(red: 0.30, green: 0.04, blue: 0.06)]
         case .bo3: [Color(red: 0.98, green: 0.52, blue: 0.10), Color(red: 0.35, green: 0.12, blue: 0.03)]
         case .boiii: [Color(red: 0.98, green: 0.52, blue: 0.10), Color(red: 0.35, green: 0.12, blue: 0.03)]
-        case .waw: [Color(red: 0.55, green: 0.55, blue: 0.50), Color(red: 0.15, green: 0.15, blue: 0.13)]
+        case .waw: [Color(red: 0.62, green: 0.58, blue: 0.36), Color(red: 0.16, green: 0.15, blue: 0.08)]
         }
     }
     /// Settings key of the game folder, for the Plutonium games.
     var folderKey: String? {
         switch self {
+        case .waw: "WAW_DIR"
         case .bo1: "BO1_DIR"
         case .bo2: "BO2_DIR"
         case .bo2c: "BO2C_DIR"
@@ -60,8 +61,8 @@ enum Game: String, CaseIterable, Identifiable {
         default: nil
         }
     }
-    var usesEngine: Bool { self == .bo1 || self == .bo2 || self == .bo2c || self == .boiii }
-    var usesPlutonium: Bool { self == .bo1 || self == .bo2 }
+    var usesEngine: Bool { self == .waw || self == .bo1 || self == .bo2 || self == .bo2c || self == .boiii }
+    var usesPlutonium: Bool { self == .waw || self == .bo1 || self == .bo2 }
 }
 
 struct PlayMode: Identifiable {
@@ -73,6 +74,10 @@ struct PlayMode: Identifiable {
 extension Game {
     var modes: [PlayMode] {
         switch self {
+        case .waw: [PlayMode(id: "online", title: "Play Online", symbol: "globe"),
+                    PlayMode(id: "zombies", title: "Zombies", symbol: "figure.walk"),
+                    PlayMode(id: "campaign", title: "Campaign", symbol: "flag.fill"),
+                    PlayMode(id: "mp", title: "Multiplayer", symbol: "person.3.fill")]
         case .bo1: [PlayMode(id: "online", title: "Play Online", symbol: "globe"),
                     PlayMode(id: "zombies", title: "Zombies", symbol: "figure.walk"),
                     PlayMode(id: "campaign", title: "Campaign", symbol: "flag.fill"),
@@ -106,41 +111,41 @@ extension Patch {
         // Both games
         Patch(key: "X87", title: "x87 acceleration",
               info: "Runs the games' old x87 floating-point maths as native ARM code with athei's x87sidecar (based on Lifeisawful's rosettax87), instead of Rosetta's slow emulation. The biggest frame-rate gain.",
-              games: [.bo1, .bo2, .bo2c]),
+              games: [.waw, .bo1, .bo2, .bo2c]),
         Patch(key: "EXEC_ON_DEMAND", title: "Fast code execution",
               info: "Plutonium turns off DEP, so Wine would make the game's whole memory executable at once, which makes Rosetta re-check it constantly (BO2 ran in slow motion). Our engine makes each page executable only when it is first run.",
-              games: [.bo1, .bo2, .bo2c, .boiii]),
+              games: [.waw, .bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "RUMBLE_FIX", title: "Controller vibration without input delay",
               info: "Every vibration command is a round trip to the controller, and Wine made the controller's input wait for it twice: in XInput (the game waited too) and in its HID bus driver (winebus), which held the device lock during the write and so held back every stick and button report. Aiming and shooting lagged whenever the controller rumbled. Ours sends vibration from its own thread and writes it without blocking input.",
-              games: [.bo1, .bo2, .bo2c, .boiii]),
+              games: [.waw, .bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "RAW_INPUT", title: "Raw mouse input",
               info: "Reads the mouse directly, without macOS pointer acceleration or smoothing, so aim follows your hand 1:1.",
-              games: [.bo1, .bo2]),
+              games: [.waw, .bo1, .bo2]),
         Patch(key: "AIM_ACCEL", offValue: "1", title: "No stick turn acceleration",
               info: "Turns off the games' stick turn acceleration and sets a 0.08 stick deadzone (adjustable below), so controller aim responds immediately and evenly.",
-              games: [.bo1, .bo2]),
+              games: [.waw, .bo1, .bo2]),
         Patch(key: "CAPTURE_DISPLAY", title: "Direct fullscreen",
               info: "In fullscreen the game takes over the display, so macOS shows its frames directly instead of compositing them with the desktop: lower latency and steadier frame times.",
-              games: [.bo1, .bo2, .bo2c, .boiii]),
+              games: [.waw, .bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "DISPLAY_MODE", title: "Native display mode in fullscreen",
               info: "While the game runs fullscreen, the display switches to a 1x mode of the game's resolution, so a scaled (HiDPI) desktop does not make macOS draw every frame at twice the size.",
-              games: [.bo1, .bo2, .bo2c, .boiii]),
+              games: [.waw, .bo1, .bo2, .bo2c, .boiii]),
         Patch(key: "MSAA_FIX", title: "Supported anti-aliasing",
               info: "Apple GPUs support up to 4x MSAA; higher settings in the games' configs are lowered to 4x so the game does not fall back or render wrongly.",
-              games: [.bo1, .bo2]),
+              games: [.waw, .bo1, .bo2]),
         // Black Ops
         Patch(key: "BO1_ASYNC", title: "Background shader compilation",
               info: "New shaders compile on separate threads instead of stopping the frame that needs them.",
-              games: [.bo1]),
+              games: [.waw, .bo1]),
         Patch(key: "BO1_WARM", title: "Compile shaders while the map loads",
               info: "Our DXVK detects the game's shader-warming pass and keeps the loading screen up until every shader of the map is compiled, so the map never stutters while you play. The first visit to a map takes up to a minute longer to load; later visits take no extra time.",
               games: [.bo1]),
         Patch(key: "BO1_SHADER_CACHE", title: "Persistent shader caches",
               info: "Keeps compiled shaders between runs (DXVK's pipeline list and MoltenVK's translated shaders, in eight parallel caches) and merges pipeline lists from older setups, so maps you have played load and run without compiling again.",
-              games: [.bo1]),
+              games: [.waw, .bo1]),
         Patch(key: "BO1_METAL_PARALLEL", title: "Parallel Metal compilation",
               info: "Lets Metal compile shaders on every CPU core at once instead of a few at a time.",
-              games: [.bo1]),
+              games: [.waw, .bo1]),
         Patch(key: "BO1_NO_SHADOWS", title: "Shadow freeze fix",
               info: "Turns off the dynamic shadow maps, which froze Black Ops under DXVK on Apple GPUs.",
               games: [.bo1]),
@@ -149,7 +154,7 @@ extension Patch {
               games: [.bo1]),
         Patch(key: "BO1_VIDMEM", title: "Full video memory",
               info: "Black Ops reads its video memory through DirectDraw, where Wine reported 128 MB and the game capped texture quality to fit. It now sees 4 GB.",
-              games: [.bo1]),
+              games: [.waw, .bo1]),
         Patch(key: "BO1_XAUDIO", title: "Gunfire sound fix",
               info: "Uses the XAudio2 from the game's own DirectX redistributable: with Wine's, Black Ops plays no gunfire sounds.",
               games: [.bo1]),
@@ -373,11 +378,10 @@ final class AppState: ObservableObject {
 
     func isReady(_ game: Game) -> Bool {
         switch game {
-        case .bo1, .bo2: engineInstalled && prefixReady && plutoniumInstalled && folder(for: game) != nil
+        case .waw, .bo1, .bo2: engineInstalled && prefixReady && plutoniumInstalled && folder(for: game) != nil
         case .boiii: engineInstalled && prefixReady && folder(for: game) != nil && boiiiInstalled
         case .bo2c: engineInstalled && campaignSteam["steam"] == "installed" && folder(for: game) != nil
         case .bo3: bo3Installed
-        case .waw: false
         }
     }
 
@@ -448,7 +452,7 @@ final class AppState: ObservableObject {
 
     /// uninstall.sh: "bo1", "bo2", "all" (engine and Plutonium too) or "bo3".
     func removeSetup(_ what: String) {
-        let titles = ["bo1": "Removing the Black Ops setup", "bo2": "Removing the Black Ops II setup",
+        let titles = ["waw": "Removing the World at War setup", "bo1": "Removing the Black Ops setup", "bo2": "Removing the Black Ops II setup",
                       "all": "Removing the engine and Plutonium", "bo3": "Removing BO3 Mac Client",
                       "bo2c": "Removing the campaign setup"]
         running = nil

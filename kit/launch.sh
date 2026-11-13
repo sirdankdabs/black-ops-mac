@@ -1,5 +1,5 @@
 #!/bin/bash
-# BO-Mac: start Black Ops (t5) or Black Ops II (t6) through Plutonium on
+# BO-Mac: start World at War (t4), Black Ops (t5) or Black Ops II (t6) through Plutonium on
 # the BO-Mac engine (install-engine.sh) in its prefix (setup-prefix.sh).
 #
 #   launch.sh bo1|bo2 online              Plutonium launcher (sign in, play online)
@@ -70,12 +70,13 @@ game=${1:-}; mode=${2:-}
 [ -x "$wine" ] || die "the engine is not installed"
 [ -d "$WINEPREFIX/drive_c" ] || die "the Wine prefix is not set up"
 case "$game:$mode" in
+  waw:online|waw:zombies|waw:campaign|waw:mp) dir=${WAW_DIR:-} t=t4 ;;
   bo1:online|bo1:zombies|bo1:campaign|bo1:mp) dir=${BO1_DIR:-} t=t5 ;;
   bo2:online|bo2:zombies|bo2:mp|bo2:declassified) dir=${BO2_DIR:-} t=t6 ;;
   boiii:play) dir=${BOIII_DIR:-} t=t7 GAME_ARGS=${GAME_ARGS---launch} ;;
   boiii:launcher) dir=${BOIII_DIR:-} t=t7 ;;
   bo2c:play) dir=${BO2C_DIR:-} t=t6c ;;
-  *) die "usage: launch.sh bo1|bo2 online|zombies|campaign|mp [name], launch.sh boiii play|launcher, or launch.sh stop" ;;
+  *) die "usage: launch.sh waw|bo1|bo2 online|zombies|campaign|mp [name], launch.sh boiii play|launcher, or launch.sh stop" ;;
 esac
 if [ "$t" = t7 ]; then
   [ -n "$dir" ] && [ -f "$dir/boiii.exe" ] || die "the Black Ops III (Windows) folder is not set (or has no boiii.exe)"
@@ -408,6 +409,30 @@ if [ "$t" = t5 ]; then
     cmp -s "$xa" "$WINEPREFIX/drive_c/windows/syswow64/xaudio2_7.dll" || cp "$xa" "$WINEPREFIX/drive_c/windows/syswow64/xaudio2_7.dll"
     reg add "$bootstrapper\\DllOverrides" /v xaudio2_7 /d native /f
   fi
+elif [ "$t" = t4 ]; then
+  # World at War: Direct3D 9 like Black Ops, so the same DXVK setup (background
+  # pipeline compilation, persistent caches, the x87 accelerator); the game's
+  # defaults like BO1's: fullscreen at the display's resolution with sync,
+  # full textures, 16x anisotropy, 4x anti-aliasing (what Apple GPUs support)
+  players="$plutonium/storage/t4/players"
+  # WaW keeps its settings per profile (players/profiles/<name>/config.cfg;
+  # "$$$" is the one Plutonium uses offline): set up every profile, and the
+  # offline one before the game creates it with windowed 1024x768
+  mkdir -p "$players/profiles/\$\$\$"
+  offline="$players/profiles/\$\$\$"
+  for f in "$players"/config.cfg "$players"/config_mp.cfg "$offline/config.cfg" "$offline/config_mp.cfg" \
+           "$players"/profiles/*/config.cfg "$players"/profiles/*/config_mp.cfg; do
+    case "$f" in *'*'*) continue ;; esac
+    defaults_once "$f" "$(dirname "$f")/.bom-defaults-$(basename "$f")" r_fullscreen 1 r_mode "${desktop:-1920x1080}" \
+      r_vsync 1 r_picmip_manual 0 r_texFilterAnisoMax 16 r_aaSamples 4 r_aspectRatio auto
+    common_cvars "$f"
+    [ -n "${hz:-}" ] && set_or_add "$f" r_displayRefresh "$hz Hz"
+    set_cvar "$f" com_maxfps 0
+  done
+  gamecfg="$players/profiles/\$\$\$/config.cfg"; [ "$mode" = mp ] && gamecfg="$players/profiles/\$\$\$/config_mp.cfg"
+  dxvk="d3d9.numBackBuffers = 3"$'\n'"dxvk.numCompilerThreads = 8"$'\n'"dxvk.numAsyncThreads = 8"$'\n'
+  [ "$maxfps" != 0 ] && dxvk+="d3d9.maxFrameRate = $maxfps"$'\n'
+  for d in "$dir" "$plutonium" "$plutonium/bin"; do [ -d "$d" ] && printf '%s' "$dxvk" > "$d/dxvk.conf"; done
 else
   players="$plutonium/storage/t6/players"
   mkdir -p "$players"
@@ -448,6 +473,7 @@ if [ "$mode" = online ]; then
   exec "$wine" "$launcher" > "$log" 2>&1
 fi
 case "$t:$mode" in
+  t4:zombies|t4:campaign) pmode=t4sp ;; t4:mp) pmode=t4mp ;;
   t5:zombies|t5:campaign) pmode=t5sp ;; t5:mp) pmode=t5mp ;;
   t6:zombies) pmode=t6zm ;; t6:mp) pmode=t6mp ;;
   t6:declassified) pmode=t6zm
