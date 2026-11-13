@@ -48,7 +48,7 @@ struct Server: Identifiable, Hashable {
     /// Why the client can't join this server, or nil when it can.
     var blocker: String? {
         if !protocolOK { return "Incompatible server" }
-        if needsMod { return "Needs a Workshop mod (not supported yet)" }
+        if needsMod && !canDownloadMap { return "This server's mod isn't on the Workshop" }
         if isCustomMap && !canDownloadMap { return "Custom map not available on the Workshop" }
         if isFull { return "Server is full" }
         return nil

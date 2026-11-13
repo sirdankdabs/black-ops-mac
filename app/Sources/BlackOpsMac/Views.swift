@@ -2,17 +2,35 @@ import SwiftUI
 
 @main
 struct BlackOpsMacApp: App {
-    @StateObject private var state = AppState()
-
+    // The app itself doesn't observe the state: if it did, every change (a log
+    // line, a status refresh) would rebuild the whole scene and the menu bar,
+    // which made the menus stutter. The window's view observes it instead.
     var body: some Scene {
         WindowGroup("Black Ops Mac") {
-            ContentView()
-                .environmentObject(state)
+            RootView()
                 .frame(minWidth: 1080, minHeight: 640)
-                .onAppear { state.checkUpdates() }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { AppState.shared.checkForAppUpdate(manual: true) }
+            }
+        }
+    }
+}
+
+struct RootView: View {
+    @ObservedObject private var state = AppState.shared
+
+    var body: some View {
+        ContentView()
+            .environmentObject(state)
+            .onAppear {
+                state.checkUpdates()
+                state.refreshInstalledFiles()
+                state.checkForAppUpdate(manual: false)
+            }
     }
 }
 

@@ -107,6 +107,8 @@ static struct {
     uint16_t port;
     char map[64], gametype[64], printable[64];
     char usermap_id[32];      // Workshop id of a custom map the client needs
+    char mod_id[32];          // Workshop id of the mod the server runs
+    char mod_name[64];        // and its name (the server's modId), loaded as the game's mod
     uint64_t started_ms;
 } target;
 static uint8_t challenge[32];
@@ -1023,15 +1025,28 @@ static bool try_server(const char *text) {
     bool real_mod = *mod_id && strcmp(mod_id, "usermaps");
     const char *map_item = *workshop ? workshop : usermap;
     bool numeric_item = *map_item && strspn(map_item, "0123456789") == strlen(map_item);
-    target.usermap_id[0] = 0;
-    if (real_mod || (!stock_map && !numeric_item)) {
-        t7_log("[BO3MacFix] BOIII: server needs workshop content (mod '%s', map %s%s), not supported yet\n", mod_id, map,
-               stock_map ? "" : " not installed");
-        set_status("failed", real_mod ? "This server needs a Workshop mod (not supported yet)"
-                                       : "This server's custom map isn't on the Workshop");
+    target.usermap_id[0] = target.mod_id[0] = target.mod_name[0] = 0;
+    bool numeric_workshop = *workshop && strspn(workshop, "0123456789") == strlen(workshop);
+    bool numeric_usermap = *usermap && strspn(usermap, "0123456789") == strlen(usermap);
+    if (real_mod) {
+        // A mod: its Workshop item is the server's workshop_id; a custom map it
+        // plays comes with the mod or as its own item (usermapId).
+        if (!numeric_workshop || strpbrk(mod_id, "/\\.") || strlen(mod_id) >= sizeof(target.mod_name)) {
+            t7_log("[BO3MacFix] BOIII: server runs mod '%s' without a Workshop item\n", mod_id);
+            set_status("failed", "This server's mod isn't on the Workshop");
+            return false;
+        }
+        snprintf(target.mod_id, sizeof(target.mod_id), "%s", workshop);
+        snprintf(target.mod_name, sizeof(target.mod_name), "%s", mod_id);
+        if (!stock_map && numeric_usermap) snprintf(target.usermap_id, sizeof(target.usermap_id), "%s", usermap);
+        t7_log("[BO3MacFix] BOIII: server runs Workshop mod '%s' (item %s)\n", mod_id, workshop);
+    } else if (!stock_map && !numeric_item) {
+        t7_log("[BO3MacFix] BOIII: server needs workshop content (map %s not installed)\n", map);
+        set_status("failed", "This server's custom map isn't on the Workshop");
         return false;
+    } else if (!stock_map) {
+        snprintf(target.usermap_id, sizeof(target.usermap_id), "%s", map_item);
     }
-    if (!stock_map) snprintf(target.usermap_id, sizeof(target.usermap_id), "%s", map_item);
     if (*workshop || *usermap)
         t7_log("[BO3MacFix] BOIII: server lists Workshop item %s but runs stock map %s; joining\n",
                *workshop ? workshop : usermap, map);
@@ -1088,7 +1103,7 @@ static void boiii_connect_command(void) {
 // Before launching: a custom map is subscribed/downloaded through Steam and
 // "usermaps" is loaded; a stock map unloads "usermaps" (as the Windows client
 // does in CL_SetupForNewServerMap).
-static struct { int stage; uint64_t since, logged; bool subscribed; } content;
+static struct { int stage; uint64_t since, logged; int subscribed; } content;  // subscribed: 1 map, 2 mod
 
 static const char *current_mod(void) { return (const char *)MAC_ADDR(0x30878dc); }
 
@@ -1101,19 +1116,24 @@ static bool content_ready(void) {
     void (*set_mod)(const char *) = (void *)MAC_ADDR(0xe49c5a);
     bool (*mod_loading)(void) = (void *)MAC_ADDR(0xe4a0b9);
     uint64_t now = now_ms();
-    const char *wanted = target.usermap_id[0] ? "usermaps" : "";
+    // a mod server loads its mod; a custom map loads "usermaps"; else none
+    const char *wanted = target.mod_name[0] ? target.mod_name : target.usermap_id[0] ? "usermaps" : "";
+    // what still has to come from the Workshop: the mod first, then the map
+    const char *item = target.mod_id[0] && !installed(target.mod_id) ? target.mod_id
+                     : target.usermap_id[0] && !installed(target.usermap_id) ? target.usermap_id : NULL;
+    bool is_mod = item && item == target.mod_id;
     switch (content.stage) {
     case 0: // download
-        if (target.usermap_id[0] && !installed(target.usermap_id)) {
-            if (!content.subscribed) {
-                content.subscribed = true;
+        if (item) {
+            if (content.subscribed != (is_mod ? 2 : 1)) {
+                content.subscribed = is_mod ? 2 : 1;
                 content.since = now;
-                bool ok = subscribe(target.usermap_id);
-                t7_log("[BO3MacFix] BOIII: subscribing to Workshop map %s (%s)\n", target.usermap_id, ok ? "ok" : "failed");
+                bool ok = subscribe(item);
+                t7_log("[BO3MacFix] BOIII: subscribing to Workshop %s %s (%s)\n", is_mod ? "mod" : "map", item, ok ? "ok" : "failed");
             }
             char message[96];
-            snprintf(message, sizeof(message), "Downloading the map from the Workshop (%d%%)",
-                     (int)(progress(target.usermap_id) * 100.0f));
+            snprintf(message, sizeof(message), "Downloading the %s from the Workshop (%d%%)", is_mod ? "mod" : "map",
+                     (int)(progress(item) * 100.0f));
             set_status("downloading", message);
             if (now - content.logged > 5000) { content.logged = now; t7_log("[BO3MacFix] BOIII: %s\n", message); }
             if (now - content.since > 45 * 60 * 1000) {
@@ -1126,12 +1146,12 @@ static bool content_ready(void) {
         }
         content.stage = 1;
         content.since = now;
-        if (target.usermap_id[0]) update_usermaps();
+        if (target.usermap_id[0] || target.mod_id[0]) update_usermaps();   // refresh the Workshop lists
         // fall through
     case 1: // load or unload "usermaps"
         if (strcmp(current_mod(), wanted)) {
             t7_log("[BO3MacFix] BOIII: switching mod '%s' -> '%s'\n", current_mod(), wanted);
-            set_status("connecting", target.usermap_id[0] ? "Loading the custom map" : "Connecting");
+            set_status("connecting", target.mod_name[0] ? "Loading the mod" : target.usermap_id[0] ? "Loading the custom map" : "Connecting");
             set_mod(wanted);
         }
         content.stage = 2;
@@ -1139,6 +1159,14 @@ static bool content_ready(void) {
         return false;
     case 2: // let the mod system settle
         if (mod_loading() || now - content.since < 1500) return false;
+        if (target.mod_name[0] && strcmp(current_mod(), wanted)) {
+            // the game couldn't load the mod (not in its list)
+            t7_log("[BO3MacFix] BOIII: mod '%s' did not load (current '%s')\n", wanted, current_mod());
+            set_status("failed", "The mod was downloaded but the game couldn't load it. Restart the game and join again.");
+            target.launch = 0;
+            memset(&content, 0, sizeof(content));
+            return false;
+        }
         t7_log("[BO3MacFix] BOIII: content ready (mod '%s')\n", current_mod());
         memset(&content, 0, sizeof(content));
         return true;

@@ -103,9 +103,11 @@ install)
   # The project's bo3macfix.conf turns ranked spoofing on; here it is the
   # user's choice (off unless they turned it on).
   set_spoof "$g" "$(saved_spoof)"
+  # Holding a movement key would open macOS's accent menu: off for the game only.
+  defaults write com.aspyr.codblkops3.steam ApplePressAndHoldEnabled -bool false 2>/dev/null
   echo "$sha" > "$dir/version"
   step "Installed ($sha)"
-  open "$app"
+  [ -n "${NO_OPEN:-}" ] || open "$app"
   ;;
 open)
   [ -d "$app" ] || die "the server browser is not installed"

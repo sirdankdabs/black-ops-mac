@@ -1,5 +1,5 @@
---- dlls/winebus.sys/main.c	2026-11-12 14:08:32
-+++ dlls/winebus.sys/main.c	2026-11-12 14:08:44
+--- a/dlls/winebus.sys/main.c
++++ b/dlls/winebus.sys/main.c
 @@ -81,6 +81,11 @@
      DEVICE_OBJECT *device;
  

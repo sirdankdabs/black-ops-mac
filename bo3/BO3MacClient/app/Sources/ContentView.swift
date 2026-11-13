@@ -87,7 +87,7 @@ struct ContentView: View {
                 Menu {
                     Toggle("Hide full servers", isOn: $hideFull)
                     Toggle("Hide empty servers", isOn: $hideEmpty)
-                    Toggle("Hide servers that need mods", isOn: $hideUnjoinable)
+                    Toggle("Hide servers that can't be joined", isOn: $hideUnjoinable)
                 } label: {
                     Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }

@@ -30,6 +30,8 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 - **Play on Steam *and* on the community servers with the same install.** BO3MacFix (with the T7Patch 3.09 security and gameplay fixes, audio and stutter fixes) goes into your Steam copy of the game: **Play on Steam** starts it for Steam's own matchmaking, and **Community Servers** opens the server browser for the BOIII/Ezz dedicated servers — the same servers Windows players join.
 - **T7 Server Browser**: every community server with map, mode, round, players and ping; search and filters; type your player name and press Join — it starts the game through Steam and connects you.
 - **Password-protected servers**: Join or double-click a locked server and type its password.
+- **Workshop custom maps and mods**: servers running a custom map or a mod download it from the Workshop when you join.
+- **Controllers in Switch mode** (Nintendo Switch Pro and pads like GameSir's) are recognised: the game's own controller list didn't include them.
 - **Joins busy servers** (the client finds the server id Windows servers never send to the Mac, also on long-running servers) and **skips the intro cutscene** as soon as the map has loaded.
 - **Ranked spoofing (optional, off by default)**, with its risks stated: it changes your real Steam stats and can get your account banned.
 - Everything is included in the app (source in `bo3/`): nothing is downloaded from anywhere else.
@@ -40,12 +42,14 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
   - *Hardware breakpoint emulation*: Rosetta cannot deliver x86 debug-register breakpoints, which Plutonium needs to start; the engine turns them into software breakpoints with trampolines, hidden from Plutonium's own integrity checks.
   - *Execution on demand*: Plutonium turns off DEP, which made Wine mark the whole game executable at once and Rosetta re-check it constantly (BO2 ran in slow motion). Pages are now made executable when they are first run.
   - *x87 acceleration*: hand-off to athei's **x87sidecar**, which runs the games' x87 floating-point maths as native ARM code.
-- **Controllers, with vibration and without input lag** — Wine waited for every rumble write twice (in XInput and in its HID bus driver, which held the controller's lock during a Bluetooth/USB round trip). Both are fixed.
+- **Controllers, with vibration and without input lag** — Wine waited for every rumble write twice (in XInput and in its HID bus driver, which held the controller's lock during a Bluetooth/USB round trip), and games change vibration almost every frame while firing: vibration now goes out on its own, at most 25 times a second, so it never holds up the controller's input.
 - **Raw mouse input, no stick acceleration, 0.08 deadzone, direct fullscreen at native resolution, macOS Game Mode.**
 - **Voice chat**: the app asks for microphone access once, so games never hang waiting for macOS's answer.
 - **Every patch can be switched off** in each game's settings, with an ⓘ explaining what it does.
 - **Plutonium's folder picker** opens with shortcuts to your Mac home, Downloads, Documents and the game folders.
 - **Remove setup** for each game, to start again from scratch (everything goes to the Trash; your games are never touched).
+- **Updates**: the app tells you when a new version is out (and *Black Ops Mac → Check for Updates…*); after updating it refreshes the files it installed, keeping your settings, Plutonium login and shader caches.
+- **No macOS accent menu** when holding a movement key in the games.
 
 ## Requirements
 
