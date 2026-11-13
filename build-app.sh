@@ -23,6 +23,9 @@ cp "$bin" "$app/Contents/MacOS/BlackOpsMac"
 strip -S "$app/Contents/MacOS/BlackOpsMac"   # no build paths in the app
 cp "$build/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 ditto "$root/kit" "$app/Contents/Resources/kit"
+# Finder metadata must not end up in the app (or its release zip)
+find "$app" -name '.DS_Store' -delete
+find "$app" -name '._*' -delete
 cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

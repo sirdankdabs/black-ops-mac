@@ -34,11 +34,11 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
 ### T6 – BOII (Campaign, Experimental) · Black Ops II's campaign, no Steam
 
 - **The campaign of your own copy** (`t6sp.exe`; Plutonium has no campaign), with the same Direct3D 11 → Metal setup as Black Ops II: DXMT, background pipelines, frame pacing, controller fixes.
-- **No Steam and no sign-in**: *Prepare* removes Steam's wrapper (SteamStub) from `t6sp.exe` with Steamless (atom0s) — the original stays beside it as `t6sp.exe.steam` — and points the game at the Redacted Steam API files already in the game folder. Nothing is downloaded and Windows Steam is not installed.
+- **No Steam and no sign-in**: *Prepare* removes Steam's wrapper from `t6sp.exe` (the original stays beside it as `t6sp.exe.steam`) and uses the offline `steam_api.dll` that you provide in the game folder. Nothing is downloaded and Windows Steam is not installed.
 - **Only the game folder is touched**, and *Remove setup* puts the original `t6sp.exe` back. Your game folder can be anywhere: copied from a PC, an external drive, or the Mac Steam app's folder.
 - **Starts fullscreen at 1920×1080** (an Apple-GPU hardware profile, once), with a 1x display mode while the game runs.
-- **Requirements**: the folder needs the **FIX REDACTED `steam_api.dll`** (the build that works offline) next to `t6sp.exe`. BO-Mac does not include it. Redacted repacks' `steam_api.dll_zmp` is the multiplayer/zombies build and crashes the campaign; *Prepare* uses a copy kept as `steam_api.dll.redacted` when there is one, and refuses the multiplayer build with a clear message. The campaign runs without the x87 accelerator (it crashes under it), on Rosetta's own x87 emulation.
-- **Redacted repacks** (2017): some ship a packed `t6sp.exe` (a `.conceal` section) that crashes under Wine, and a `Plugins` folder (OpenNet, ZonePlugin) that crashes the campaign. Put the Steam copy's `t6sp.exe` in that folder; *Prepare* sets the plugins aside (they go back with *Remove setup*).
+- **Requirements**: your own legal copy of Black Ops II with `t6sp.exe`, and an offline-compatible `steam_api.dll` that you provide next to it. BO-Mac does not include game files or the `steam_api.dll`. The campaign runs without the x87 accelerator (it crashes under it), on Rosetta's own x87 emulation.
+- **Some repacks** ship a packed `t6sp.exe` or extra plugins that do not work under Wine: use the `t6sp.exe` from your Steam copy. *Prepare* sets incompatible plugins aside (they go back with *Remove setup*).
 
 ### T7 – BOIII (Mac Version) · Black Ops III from Steam
 
@@ -99,7 +99,7 @@ Choose your game folder, press Install, press Play. No CrossOver, no Wine to ins
    - **World at War / Black Ops / Black Ops II**: *Install* the engine → *Choose…* the game folder containing `plutonium.exe` → *Install* Plutonium (sign in when its window opens) or *Import* an older Wine prefix. After you sign in, close the Plutonium window, then select **Play Online** (Plutonium launcher), **Zombies**, **Campaign**, or **Multiplayer** (offline/LAN) directly from the app.
    - **Black Ops III**: Once the game is installed through Steam, click *Install* → the server browser will open. From there, select any server you want to join, and the game will launch automatically. Once the game opens, navigate to the corresponding game mode (e.g., Zombies), and you'll automatically join the selected server. Alternatively, you can launch the game directly through Steam to join Steam servers or open the server browser separately to connect to community servers.
 
-   - **T6 – BOII (Campaign)**: *Choose…* your game folder (wherever it is) → **Prepare** (removes Steam's wrapper from `t6sp.exe` and switches Redacted to offline) → **Play Campaign**. No Steam, no sign-in.
+   - **T6 – BOII (Campaign)**: *Choose…* your game folder (wherever it is) → **Prepare** (removes Steam's wrapper from `t6sp.exe`) → **Play Campaign**. No Steam, no sign-in.
    - **Black Ops III (Windows Version)** — see below.
 
 4. The first time you load a Black Ops map, the loading screen will remain visible while all shaders are compiled (up to about a minute). Subsequent loads will be much faster.
@@ -142,7 +142,7 @@ kit/                 what the app runs (also usable from Terminal)
   launch.sh            starts a game with every patch (settings.conf switches)
   bo3.sh               BO3 Mac Client install / open / Steam / ranked spoofing
   boiii.sh             boiii.exe download (verified) and stats backup / restore
-  bo2-campaign.sh      BO2 campaign: Steamless + the Redacted Steam API, no Steam
+  bo2-campaign.sh      BO2 campaign: Steam-free (offline steam_api.dll you provide)
   zombies-declassified.sh   the BO2 mod (via its own verified installer)
   uninstall.sh         remove a game's setup (to the Trash)
   prepare-shaders.sh   optional: compile every BO1 map ahead of time
@@ -166,11 +166,14 @@ build-app.sh         builds dist/BO-Mac.app
 - **Logo-2K** — [Zombies Declassified](https://github.com/Logo-2K/zombies-declassified).
 - **BO3 Mac Client** (included in `bo3/` and `kit/payload/bo3`), built on **BO3MacFix** by Emma / InvoxiPlayGames and Anthony / serious, with **T7Patch** work by its authors; the community server project behind `master.ezz.lol`.
 - **atom0s** — [Steamless](https://github.com/atom0s/Steamless), which removes Steam's wrapper from the campaign's `t6sp.exe` (CC BY-NC-ND 4.0; licence text in `kit/payload/steamless/`).
-- **redacted.se** — the Redacted Steam API that lets Black Ops II's campaign run offline (not included; use your own copy).
 - **Ezz / BOIII** — [boiii-free](https://github.com/Ezz-lol/boiii-free), the community client for the Windows version (downloaded from its latest release), built on momo5502's BOIII.
 - **GStreamer** contributors.
 
 Not affiliated with Activision, Treyarch, Aspyr, Valve, CodeWeavers or Plutonium. Call of Duty and Black Ops are trademarks of Activision Publishing, Inc. You need your own copies of the games.
+
+## Legal
+
+You need your own copies of the games. BO-Mac does not include game files, Steam, or any Steam API replacement. Removing DRM may be restricted by law (for example the DMCA in the United States, the EU InfoSoc Directive, and local anti-circumvention rules); use it only where you are allowed to. Not affiliated with Activision, Treyarch, Valve, CodeWeavers or Plutonium. Steamless is included under CC BY-NC-ND 4.0 (`kit/payload/steamless/LICENSE.txt`); the rest of the project is MIT.
 
 ## License
 
