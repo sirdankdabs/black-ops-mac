@@ -276,8 +276,9 @@ if [ "$t" = t7 ]; then
   log="$home/logs/boiii-play.log"
   # boiii's launcher window: mshtml stays on here
   export WINEDLLOVERRIDES="mscoree="
-  # mods' unsafe Lua functions without boiii's question, only if chosen
-  on BOIII_SAFE_LUA || GAME_ARGS="${GAME_ARGS:+$GAME_ARGS }-unsafe-lua"
+  # mods' unsafe Lua functions without boiii's question (its prompt broke some
+  # mods); BOIII_UNSAFE_LUA=0 makes boiii ask first
+  on BOIII_UNSAFE_LUA && GAME_ARGS="${GAME_ARGS:+$GAME_ARGS }-unsafe-lua"
   # Workshop mods: boiii takes Wine for Linux and runs steamcmd/steamcmd.sh
   # (it would fetch Linux SteamCMD, which can't run on macOS: "Retry Limit
   # Reached"). Give it Valve's macOS SteamCMD (checked against Valve's
