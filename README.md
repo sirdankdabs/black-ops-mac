@@ -39,7 +39,7 @@ Choose your game folder, press Install, press Play. Best on macOS 15 Sequoia or 
 - **No Steam and no sign-in**: *Prepare* removes Steam's wrapper from `t6sp.exe` (the original stays beside it as `t6sp.exe.steam`) and uses the offline `steam_api.dll` that you provide in the game folder. Nothing is downloaded and Windows Steam is not installed.
 - **Only the game folder is touched**, and *Remove setup* puts the original `t6sp.exe` back. Your game folder can be anywhere: copied from a PC, an external drive, or the Mac Steam app's folder.
 - **Starts fullscreen at 1920×1080** (an Apple-GPU hardware profile, once), with a 1x display mode while the game runs.
-- **Requirements**: your own legal copy of Black Ops II with `t6sp.exe`, and an offline-compatible `steam_api.dll` that you provide next to it. BO-Mac does not include game files or the `steam_api.dll`. The campaign runs without the x87 accelerator (it crashes under it), on Rosetta's own x87 emulation.
+- **Requirements**: your own legal copy of Black Ops II with `t6sp.exe`, and an offline-compatible `steam_api.dll` that you provide next to it. BO-Mac does not include game files or the `steam_api.dll`. The campaign uses the x87 accelerator like the other modes (turn it off in the campaign's settings if it gives you trouble).
 - **Some repacks** ship a packed `t6sp.exe` or extra plugins that do not work under Wine: use the `t6sp.exe` from your Steam copy. *Prepare* sets incompatible plugins aside (they go back with *Remove setup*).
 
 ### T7 – BOIII (Mac Version) · Black Ops III from Steam

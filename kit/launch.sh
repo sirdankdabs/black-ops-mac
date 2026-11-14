@@ -162,12 +162,13 @@ clear_env() { unset "$1"; reg delete 'HKCU\Environment' /v "$1" /f; }
 
 read -r dw dh hz < <("$kit/tools/displaymode" current 2>/dev/null || true)
 maxfps=${MAXFPS:-${hz:-0}}
-if [ "${X87:-1}" = 1 ] && [ -x "$engine/bin/x87sidecar" ] && [ "$t" != t6c ]; then
+if [ "${X87:-1}" = 1 ] && [ -x "$engine/bin/x87sidecar" ]; then
   set_env X87_SIDECAR_PATH "$engine/bin/x87sidecar"
-  set_env X87_SIDECAR_PROGRAMS plutonium-bootstrapper-win32.exe
+  # Plutonium's games and the campaign's t6sp.exe (it crashed under an older
+  # sidecar; with x87sidecar 1.9 it runs, and is CPU-bound without it)
+  set_env X87_SIDECAR_PROGRAMS plutonium-bootstrapper-win32.exe:t6sp.exe
 else
-  # The campaign's t6sp.exe crashes under the x87 sidecar, so it always runs
-  # without it (Rosetta's own x87 emulation is exact, if slower).
+  # X87=0: Rosetta's own x87 emulation (exact, if slower)
   clear_env X87_SIDECAR_PATH; clear_env X87_SIDECAR_PROGRAMS
 fi
 on() { [ "${!1:-1}" != 0 ]; }   # a patch is on unless set to 0

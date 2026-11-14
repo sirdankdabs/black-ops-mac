@@ -111,7 +111,7 @@ extension Patch {
         // Both games
         Patch(key: "X87", title: "x87 acceleration",
               info: "Runs the games' old x87 floating-point maths as native ARM code with athei's x87sidecar (based on Lifeisawful's rosettax87), instead of Rosetta's slow emulation. The biggest frame-rate gain.",
-              games: [.waw, .bo1, .bo2]),
+              games: [.waw, .bo1, .bo2, .bo2c]),
         Patch(key: "EXEC_ON_DEMAND", title: "Fast code execution",
               info: "Plutonium turns off DEP, so Wine would make the game's whole memory executable at once, which makes Rosetta re-check it constantly (BO2 ran in slow motion). Our engine makes each page executable only when it is first run.",
               games: [.waw, .bo1, .bo2, .bo2c, .boiii]),
